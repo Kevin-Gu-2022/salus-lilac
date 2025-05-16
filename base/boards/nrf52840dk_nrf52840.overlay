@@ -1,0 +1,16 @@
+&pwm0 {
+    status = "okay";
+};
+
+&gpio0 {
+    status = "okay";
+};
+
+ / {
+    servo: servo {
+        compatible = "pwm-servo";
+        pwms = <&pwm0 0 PWM_MSEC(20) PWM_POLARITY_NORMAL>; // channel 0 (P0.13)
+        min-pulse = <PWM_USEC(700)>;
+        max-pulse = <PWM_USEC(2300)>;
+    };
+};
