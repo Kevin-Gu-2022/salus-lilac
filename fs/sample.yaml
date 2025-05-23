@@ -1,0 +1,28 @@
+  name: Sensor Sampling and Logging Project
+  tests:
+    app.sensor_sampling:
+      tags:
+        - rtc
+        - sensor
+        - gpio
+        - shell
+        - filesystem
+        - json
+      filter: dt_enabled_alias_with_parent_compat("sw0", "gpio-keys")
+      depends_on:
+        - gpio
+        - rtc
+        - flash
+        - filesystem
+      harness: custom
+      integration_platforms:
+        - b_l475e_iot01a
+        - frdm_k64f
+      extra_args:
+        - CONFIG_SENSOR=y
+        - CONFIG_SHELL=y
+        - CONFIG_FS_LITTLEFS=y
+        - CONFIG_JSON_LIBRARY=y
+        - CONFIG_USE_SEGGER_RTT=y
+      platform_allow:
+        - b_l475e_iot01a
