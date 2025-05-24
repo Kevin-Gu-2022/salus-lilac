@@ -10,6 +10,7 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/shell/shell.h>
 #include "user.h"
+#include "fs.h"
 
 // Adding users command.
 static int cmd_user_add(const struct shell *shell, size_t argc, char **argv) {
@@ -91,6 +92,7 @@ static int cmd_user_view(const struct shell *shell, size_t argc, char **argv) {
 // Main.
 int main(void) {
     user_init();
+    fs_init();
 }
 
 // Subcommands for user configuration.

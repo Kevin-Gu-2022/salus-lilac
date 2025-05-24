@@ -6,11 +6,6 @@
 
 #include "user.h"
 
-// Predefined users
-const user_config_t user_configs[] = {
-    { "Mobile_Node", "F5:75:FE:85:34:67", "4011" },
-};
-
 // Singly linked list to hold user nodes, and mutex and semaphore for thread safety
 sys_slist_t user_config_list;
 struct k_mutex user_config_list_mutex;
