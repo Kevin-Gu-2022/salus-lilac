@@ -10,6 +10,7 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/shell/shell.h>
 #include "user.h"
+#include "bluetooth.h"
 #include "fs.h"
 
 // Adding users command.
@@ -93,6 +94,7 @@ static int cmd_user_view(const struct shell *shell, size_t argc, char **argv) {
 int main(void) {
     user_init();
     fs_init();
+    bluetooth_init();
 }
 
 // Subcommands for user configuration.

@@ -29,5 +29,6 @@ extern struct k_msgq user_passcode_msgq;
 
 extern int bluetooth_init(void);
 extern int bluetooth_advertise(void);
+extern void bluetooth_write(const char *msg, size_t len);
 
 #endif

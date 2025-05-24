@@ -10,6 +10,8 @@
 K_MSGQ_DEFINE(user_mac_msgq, MAC_ADDRESS_LENGTH, MSGQ_SIZE, 4);
 K_MSGQ_DEFINE(user_passcode_msgq, PASSCODE_LENGTH, MSGQ_SIZE, 4);
 
+struct bt_conn *conn_connected = NULL;
+
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
 	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
@@ -79,6 +81,7 @@ static void connected(struct bt_conn *conn, uint8_t err) {
     char mac[MAC_ADDRESS_LENGTH];
     if (is_mac_allowed(peer_addr, mac, sizeof(mac))) {
         k_msgq_put(&user_mac_msgq, mac, K_NO_WAIT);
+        conn_connected = bt_conn_ref(conn);
     } else {
         printk("Unauthorised MAC: %s - Disconnecting\n", addr_str);
         bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
@@ -96,6 +99,10 @@ void adv_restart_fn(struct k_work *work) {
 
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
     printk("Disconnected (reason %u)\n", reason);
+    if (conn_connected) {
+        bt_conn_unref(conn_connected);
+        conn_connected = NULL;
+    }
     k_work_schedule(&adv_restart_work, K_MSEC(500));
 }
 
@@ -155,4 +162,18 @@ int bluetooth_advertise(void) {
 	}
     return 0;
     
+}
+
+void bluetooth_write(const char *msg, size_t len) {
+    int err;
+
+    if (!conn_connected) {
+        printk("No connection available to send\n");
+        return;
+    }
+
+    err = bt_nus_send(conn_connected, (const uint8_t *)msg, len);
+    if (err) {
+        printk("Failed to send NUS data (err %d)\n", err);
+    }
 }

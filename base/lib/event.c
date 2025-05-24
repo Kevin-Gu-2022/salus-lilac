@@ -102,7 +102,7 @@ void handle_connecting(void) {
 
     static bool started = false;
     if (!started) {
-        bluetooth_init();
+        // bluetooth_init();
         bluetooth_advertise();
         started = true;
     }
@@ -113,14 +113,18 @@ void handle_connecting(void) {
 	if (k_msgq_get(&user_mac_msgq, mac_data, K_NO_WAIT) == 0) {
 		// Find the user in the list
         user_config_t *user;
+
+        k_mutex_lock(&user_config_list_mutex, K_FOREVER);
         SYS_SLIST_FOR_EACH_CONTAINER(&user_config_list, user, node) {
             if (strcmp(user->mac, mac_data) == 0) {
                 current_user = user;
                 break;
             }
         }
+        k_mutex_unlock(&user_config_list_mutex);
         
-        printk("Connected to authorised user with MAC: %s\n", mac_data);
+        // printk("Connected to authorised user with MAC: %s\n", mac_data);
+        printk("Connected to user: %s\n", current_user ? current_user->alias : "Unknown");
         transition_to(STATE_PASSCODE);
         started = false;
         return;
@@ -173,14 +177,20 @@ void handle_passcode(void) {
 		printk("Received passcode: %s\n", passcode_data);
         
         if (strncmp(passcode_data, current_user->passcode, PASSCODE_LENGTH - 1) == 0) {
+            printk("Correct passcode for user: %s\n", current_user->alias);
+            bluetooth_write("CORRECT", 7);
             transition_to(STATE_SUCCESS);
+            passcode_attempts = 0;
         } else {
             passcode_attempts++;
 
             // Check if the number of password attempts are lower than the limit
             if (passcode_attempts >= PASSCODE_ATTEMPTS) {
+                bluetooth_write("INCORRECT", 9);
                 transition_to(STATE_FAIL);
+                passcode_attempts = 0;
             } else {
+                bluetooth_write("FAILED", 6);
                 transition_to(STATE_PASSCODE);
             }
 	    }
@@ -204,7 +214,7 @@ void handle_success(void) {
 	// Signal to servo motor, speaker and camera over MQTT
 	// TODO
 
-    transition_to(STATE_BLOCKCHAIN);
+    // transition_to(STATE_BLOCKCHAIN);
 }
 
 // FAIL: Appends the event to the blockchain
@@ -230,6 +240,7 @@ void handle_blockchain(void) {
             break;
     }
 
+    current_user = NULL;
     transition_to(STATE_IDLE);
 }
 
