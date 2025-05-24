@@ -156,8 +156,4 @@ void user_init(void) {
     k_mutex_init(&user_config_list_mutex);
     k_sem_init(&user_list_update_sem, 0, 1);
     sys_slist_init(&user_config_list);
-
-    // for (int i = 0; i < sizeof(user_configs) / sizeof(user_configs[0]); i++) {
-    //     user_add(user_configs[i].alias, user_configs[i].mac, user_configs[i].passcode);
-    // }
 }
