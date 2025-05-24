@@ -8,17 +8,14 @@
 #define MIN_RSSI      -70
 #define TARGET_HANDLE 0x0015
 
-K_WORK_DELAYABLE_DEFINE(write_work, delayed_write);
-
 static const bt_addr_t target_mac = {
     .val = { 0x01, 0xEF, 0xBE, 0x00, 0xAD, 0xDE }
 };
 
-struct bt_conn *conn_connected;
+struct bt_conn *conn_connected = NULL;
 void (*start_scan_func)(void);
-extern void gatt_write_cmd(const char *string);
 
-// device filter and connection
+// Device filter and connection ---
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
                          struct net_buf_simple *ad) {
     char dev[BT_ADDR_LE_STR_LEN];
@@ -119,21 +116,19 @@ void config_mac_addr(void) {
 }
 
 void init_ble_with_scanning(void) {
-	// config_mac_addr();
+	config_mac_addr();
     int err = bt_enable(NULL);
     if (err) {
         printk("Bluetooth enable failed (err %d)\n", err);
         return;
     }
     printk("Bluetooth initialized\n");
-	conn_connected = NULL;
 	
 	start_scan_func = start_scan;
     start_scan();
 }
 
 void gatt_write_cmd(const char *string) {
-	
 	// wait until connection is established
     while (!conn_connected) {
         k_sleep(K_MSEC(100));
