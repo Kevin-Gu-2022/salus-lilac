@@ -8,6 +8,8 @@
 #define MIN_RSSI      -70
 #define TARGET_HANDLE 0x0015
 
+K_SEM_DEFINE(conn_sem, 0, 1); 
+
 static const bt_addr_t target_mac = {
     .val = { 0x01, 0xEF, 0xBE, 0x00, 0xAD, 0xDE }
 };
@@ -19,7 +21,7 @@ void (*start_scan_func)(void);
 static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
                          struct net_buf_simple *ad) {
     char dev[BT_ADDR_LE_STR_LEN];
-    struct bt_conn *conn;
+    struct bt_conn *conn = NULL;
     int err;
 
     bt_addr_le_to_str(addr, dev, sizeof(dev));
@@ -71,6 +73,7 @@ static void connected(struct bt_conn *conn, uint8_t err) {
 
     printk("[OK] Connected: %s\n", addr);
     conn_connected = bt_conn_ref(conn);
+	k_sem_give(&conn_sem); 
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
@@ -116,7 +119,7 @@ void config_mac_addr(void) {
 }
 
 void init_ble_with_scanning(void) {
-	config_mac_addr();
+	// config_mac_addr();
     int err = bt_enable(NULL);
     if (err) {
         printk("Bluetooth enable failed (err %d)\n", err);
@@ -129,10 +132,8 @@ void init_ble_with_scanning(void) {
 }
 
 void gatt_write_cmd(const char *string) {
-	// wait until connection is established
-    while (!conn_connected) {
-        k_sleep(K_MSEC(100));
-    }
+
+	k_sem_take(&conn_sem, K_FOREVER);  
 
 	if (conn_connected) {
 		struct bt_conn *conn = bt_conn_ref(conn_connected);
