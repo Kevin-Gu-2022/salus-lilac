@@ -3,18 +3,45 @@
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/hci.h>
+
+#include <zephyr/sys/printk.h>
+#include <zephyr/sys/byteorder.h>
 
 #define MIN_RSSI      -70
 #define TARGET_HANDLE 0x0015
 
+#define MAX_NOTIFY_LEN 256
+static char last_notify_string[MAX_NOTIFY_LEN];
+static struct bt_gatt_subscribe_params subscribe_params;
+
 K_SEM_DEFINE(conn_sem, 0, 1); 
+
+static uint8_t notify_func(struct bt_conn *conn,
+			   struct bt_gatt_subscribe_params *params,
+			   const void *data, uint16_t length) {
+	if (!data) {
+		printk("[UNSUBSCRIBED]\n");
+		params->value_handle = 0U;
+		return BT_GATT_ITER_STOP;
+	}
+
+	// Ensure safe copy within buffer limits
+	uint16_t copy_len = length < (MAX_NOTIFY_LEN - 1) ? length : (MAX_NOTIFY_LEN - 1);
+	memcpy(last_notify_string, data, copy_len);
+	last_notify_string[copy_len] = '\0';  // Null-terminate
+
+	printk("[NOTIFICATION STORED] %s\n", last_notify_string);
+
+	return BT_GATT_ITER_CONTINUE;
+}
 
 static const bt_addr_t target_mac = {
     .val = { 0x01, 0xEF, 0xBE, 0x00, 0xAD, 0xDE }
 };
 
-struct bt_conn *conn_connected = NULL;
+struct bt_conn *conn_connected;
 void (*start_scan_func)(void);
 
 // Device filter and connection ---
@@ -74,6 +101,20 @@ static void connected(struct bt_conn *conn, uint8_t err) {
     printk("[OK] Connected: %s\n", addr);
     conn_connected = bt_conn_ref(conn);
 	k_sem_give(&conn_sem); 
+
+	if (conn == conn_connected) {
+		subscribe_params.notify = notify_func;
+		subscribe_params.value_handle = 0x0012;      // TX value handle
+		subscribe_params.ccc_handle = 0x0013;        // CCC descriptor
+		subscribe_params.value = BT_GATT_CCC_NOTIFY;
+
+		int err = bt_gatt_subscribe(conn, &subscribe_params);
+		if (err && err != -EALREADY) {
+			printk("Subscribe failed (err %d)\n", err);
+		} else {
+			printk("[SUBSCRIBED to 0x0012]\n");
+		}
+	}
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason) {

@@ -5,6 +5,7 @@
  */
 
 #include <stdint.h>
+#include <zephyr/kernel.h>
 
 extern void init_ble_with_scanning(void);
 extern void gatt_write_cmd(const char *string);
@@ -12,5 +13,6 @@ extern void gatt_write_cmd(const char *string);
 int main(void) {
 	(void)init_ble_with_scanning();
 	(void)gatt_write_cmd("2525");
+
 	return 0;
 }
