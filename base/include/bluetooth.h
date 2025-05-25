@@ -26,6 +26,7 @@
 
 extern struct k_msgq user_mac_msgq;
 extern struct k_msgq user_passcode_msgq;
+extern struct k_sem user_disconnect_sem;
 
 extern int bluetooth_init(void);
 extern int bluetooth_advertise(void);

@@ -44,6 +44,14 @@ void handle_blockchain(void);
 // Finite state machine thread.
 void fsm_thread(void) {
 	while (1) {
+        
+        if (k_sem_take(&user_disconnect_sem, K_NO_WAIT) == 0) {
+            // User disconnected, reset current user
+            printk("User disconnected, resetting current user\n");
+            current_user = NULL;
+            transition_to(STATE_IDLE);
+        }
+        
         switch (current_state) {
             case STATE_IDLE:
                 handle_idle();
@@ -210,6 +218,7 @@ void handle_fail(void) {
 // FAIL: Correct passcode within attempt limit
 void handle_success(void) {
     printk("State: SUCCESS\n");
+    servo_toggle();
     
 	// Signal to servo motor, speaker and camera over MQTT
 	// TODO

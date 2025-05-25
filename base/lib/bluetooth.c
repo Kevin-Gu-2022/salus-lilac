@@ -9,6 +9,7 @@
 // Define message queues.
 K_MSGQ_DEFINE(user_mac_msgq, MAC_ADDRESS_LENGTH, MSGQ_SIZE, 4);
 K_MSGQ_DEFINE(user_passcode_msgq, PASSCODE_LENGTH, MSGQ_SIZE, 4);
+K_SEM_DEFINE(user_disconnect_sem, 0, 1);
 
 struct bt_conn *conn_connected = NULL;
 
@@ -104,6 +105,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
         conn_connected = NULL;
     }
     k_work_schedule(&adv_restart_work, K_MSEC(500));
+    k_sem_give(&user_disconnect_sem);
 }
 
 static struct bt_conn_cb conn_callbacks = {
