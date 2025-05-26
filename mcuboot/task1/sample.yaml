@@ -1,0 +1,17 @@
+sample:
+  description: A random number generator demo using multi-threading with K_THREAD_DEFINE
+  name: Random Number Generator
+tests:
+  sample.basic.rng:
+    tags:
+      - kernel
+      - threads
+      - random
+    integration_platforms:
+      - disco_l475_iot
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: false
+      regex:
+        - "Generated random number: (.*)"
