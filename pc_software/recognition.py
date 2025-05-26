@@ -1,5 +1,6 @@
 """
-A short script to detect objects using YOLOv8
+A short script to detect objects using YOLOv8ls
+
 """
 from ultralytics import YOLO
 
