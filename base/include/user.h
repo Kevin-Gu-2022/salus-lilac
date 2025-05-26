@@ -31,6 +31,9 @@ typedef struct {
 #define USER_PASSCODE_INVALID -5
 #define USER_MEMORY_ERROR -6
 
+#define MAC_ADDRESS_LENGTH 18
+#define PASSCODE_LENGTH 5
+
 extern sys_slist_t user_config_list;
 extern struct k_mutex user_config_list_mutex;
 extern struct k_sem user_list_update_sem;
