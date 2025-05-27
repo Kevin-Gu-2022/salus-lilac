@@ -2,6 +2,7 @@
 #include <zephyr/devicetree.h>
 #include <stdio.h>
 #include <string.h>
+
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/services/nus.h>
@@ -9,6 +10,8 @@
 #define STACKSIZE               4096
 #define DEVICE_NAME		    CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN		(sizeof(DEVICE_NAME) - 1)
+
+struct bt_conn *conn_connected = NULL;
 
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
@@ -96,18 +99,44 @@ int set_up_ble(void) {
     return 0;
 }
 
+void bluetooth_write(const char *msg, size_t len) {
+    int err;
 
-void ble_thread(void *, void *, void *) {
+    if (!conn_connected) {
+        // printk("No connection available to send\n");
+        return;
+    }
 
-    int err = set_up_ble();
-    bt_conn_cb_register(&conn_callbacks);
-    k_work_init_delayable(&adv_restart_work, adv_restart_fn);
-
-    while (1) {
-
-        k_sleep(K_MSEC(10)); 
+    err = bt_nus_send(conn_connected, (const uint8_t *)msg, len);
+    if (err) {
+        printk("Failed to send NUS data (err %d)\n", err);
     }
 }
 
-// Define and start threads
-K_THREAD_DEFINE(ble_tid, STACKSIZE, ble_thread, NULL, NULL, NULL, 1, 0, 0);
+int main(void) {
+	int err = set_up_ble();
+    bt_conn_cb_register(&conn_callbacks);
+    k_work_init_delayable(&adv_restart_work, adv_restart_fn);
+
+	while (1) {
+		
+		bluetooth_write("HIIII", 5);
+		k_sleep(K_MSEC(100)); 
+	}
+}
+
+
+// void ble_thread(void *, void *, void *) {
+
+//     int err = set_up_ble();
+//     bt_conn_cb_register(&conn_callbacks);
+//     k_work_init_delayable(&adv_restart_work, adv_restart_fn);
+
+//     while (1) {
+
+//         k_sleep(K_MSEC(10)); 
+//     }
+// }
+
+// // Define and start threads
+// K_THREAD_DEFINE(ble_tid, STACKSIZE, ble_thread, NULL, NULL, NULL, 1, 0, 0);

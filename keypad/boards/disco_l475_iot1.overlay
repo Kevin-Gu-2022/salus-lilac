@@ -1,0 +1,26 @@
+/ {
+    aliases {
+        row0 = &row0_node;
+        row1 = &row1_node;
+        row2 = &row2_node;
+        row3 = &row3_node;
+        col0 = &col0_node;
+        col1 = &col1_node;
+        col2 = &col2_node;
+        col3 = &col3_node;
+    };
+
+    keypad {
+        compatible = "gpio-leds";
+
+        row0_node: row0_node { gpios = <&gpioc 5 GPIO_ACTIVE_LOW>; };
+        row1_node: row1_node { gpios = <&gpioc 4 GPIO_ACTIVE_LOW>; };
+        row2_node: row2_node { gpios = <&gpioc 3 GPIO_ACTIVE_LOW>; };
+        row3_node: row3_node { gpios = <&gpioc 2 GPIO_ACTIVE_LOW>; };
+
+        col0_node: col0_node { gpios = <&gpioa 7 GPIO_ACTIVE_LOW>; };
+        col1_node: col1_node { gpios = <&gpioc 1 GPIO_ACTIVE_LOW>; };
+        col2_node: col2_node { gpios = <&gpioc 0 GPIO_ACTIVE_LOW>; };
+        col3_node: col3_node { gpios = <&gpiob 2 GPIO_ACTIVE_LOW>; };
+    };
+};

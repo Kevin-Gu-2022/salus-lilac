@@ -11,7 +11,6 @@
 
 #define MIN_RSSI      -70
 #define TARGET_HANDLE 0x0015
-
 #define MAX_NOTIFY_LEN 256
 static char last_notify_string[MAX_NOTIFY_LEN];
 static struct bt_gatt_subscribe_params subscribe_params;
