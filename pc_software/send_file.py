@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 
 FILE_BASE_URL = "https://api.tago.io/file/6808dca1d2bacd000a4f1731/img/"
 
+load_dotenv()
+
 def send_data(filename: str):
 
     data_endpoint = 'https://api.us-e1.tago.io/data'
@@ -69,5 +71,4 @@ def send_image(filename: str) -> None:
 
 
 if __name__ == "__main__":
-    load_dotenv()
     send_image('person_door.jpg')
