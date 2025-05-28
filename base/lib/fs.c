@@ -6,8 +6,11 @@
 
 #include "fs.h"
 
-#define CONFIG_USER_FILE_PATH "/lfs/users"
-#define CONFIG_SENSOR_FILE_PATH "/lfs/sensors"
+#define CONFIG_USER_FILE_PATH "/lfs/users.conf"
+#define CONFIG_SENSOR_FILE_PATH "/lfs/sensors.conf"
+
+#define STACK_SIZE 4096
+#define THREAD_PRIORITY 1
 
 static const struct json_obj_descr json_user_descr[] = {
     JSON_OBJ_DESCR_PRIM_NAMED(user_config_t, "Alias", alias, JSON_TOK_STRING),

@@ -634,6 +634,7 @@ void handle_blockchain(void) {
 	switch (previous_state) {
         case STATE_TAMPERING:
             printk("BLOCKCHAIN: TAMPERING event recorded.\n");
+            add_block("test_time", "TAMPERING", "MY NAME", "AB:CD:EF:12:34:56");
             k_msleep(5000);
             break;
         case STATE_PRESENCE:

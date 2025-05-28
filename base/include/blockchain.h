@@ -5,7 +5,7 @@
 #define MAX_BLOCKS 20
 #define HASH_SIZE 65
 
-#define BLOCKCHAIN_FILE "/lfs1/chain.log"
+#define BLOCKCHAIN_FILE "/lfs/chain.log"
 
 typedef struct {
     char timestamp[32];

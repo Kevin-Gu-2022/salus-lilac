@@ -9,8 +9,8 @@
 struct k_sem sensor_threshold_update_sem;
 
 static sensor_threshold_t thresholds = {
-    .ultra_threshold = "0.080\0",
-    .mag_threshold = "0.050\0"
+    .ultra_threshold = "4.000\0",
+    .mag_threshold = "0.400\0"
 };
 
 const sensor_threshold_t *sensor_get_thresholds(void) {
@@ -19,7 +19,7 @@ const sensor_threshold_t *sensor_get_thresholds(void) {
 
 void sensor_set_thresholds(const sensor_threshold_t *new_thresholds) {
     if (new_thresholds) {
-        thresholds = *new_thresholds;  // copy all threshold values
+        thresholds = *new_thresholds;
         k_sem_give(&sensor_threshold_update_sem);
     }
 }

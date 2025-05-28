@@ -12,7 +12,6 @@
 #include <stdlib.h>
 #include "user.h"
 #include "fs.h"
-// #include "bluetooth.h"
 #include "event.h"
 #include "servo.h"
 #include "keypad.h"

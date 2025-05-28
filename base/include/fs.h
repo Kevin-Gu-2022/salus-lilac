@@ -21,9 +21,7 @@
 #include "user.h"
 #include "sensor.h"
 
-#define STACK_SIZE 4096
-#define THREAD_PRIORITY 1
-
 extern void fs_init(void);
+extern ssize_t fs_read_line(struct fs_file_t *file, char *buf, size_t max_len);
 
 #endif

@@ -27,6 +27,7 @@
 #include "servo.h"
 #include "keypad.h"
 #include "sensor.h"
+#include "blockchain.h"
 
 #define STACK_SIZE             4096
 #define THREAD_PRIORITY        1
