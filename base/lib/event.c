@@ -29,6 +29,7 @@ user_config_t *last_failed_user = NULL;
 static system_state_t current_state = STATE_IDLE;
 system_state_t previous_state = STATE_IDLE;
 static event_type_t current_event = EVENT_NONE;
+static int64_t current_event_time = 0;
 
 // Prototypes for state handlers
 void transition_to(system_state_t next_state);
@@ -462,6 +463,7 @@ void handle_sensor_data(void) {
             if (magnetometer_event(notify_buffer)) {
                 printk("Tampering detected!\n");
                 current_event = EVENT_TAMPERING;
+                current_event_time = k_uptime_get() / 1000;
                 transition_to(STATE_SENSOR_DISCONNECT);
                 return;
             }
@@ -471,6 +473,7 @@ void handle_sensor_data(void) {
             if (ultrasonic_event(notify_buffer)) {
                 printk("Presence detected!\n");
                 current_event = EVENT_PRESENCE;
+                current_event_time = k_uptime_get() / 1000;
                 transition_to(STATE_SENSOR_DISCONNECT);
                 return;
             }
@@ -580,6 +583,7 @@ void handle_mobile_data(void) {
                 printk("Correct! Welcome %s!\n", current_user->alias);
                 bluetooth_write("Y");
                 current_event = EVENT_SUCCESS;
+                current_event_time = k_uptime_get() / 1000;
                 transition_to(STATE_MOBILE_DISCONNECT);
                 passcode_attempts = 0;
             } else {
@@ -587,7 +591,8 @@ void handle_mobile_data(void) {
                 if (passcode_attempts >= PASSCODE_ATTEMPTS) {
                     printk("%s has been temporarily locked out.\n", current_user->alias);
                     bluetooth_write("F");
-                    current_event = EVENT_FAILED;
+                    current_event = EVENT_FAIL;
+                    current_event_time = k_uptime_get() / 1000;
                     transition_to(STATE_MOBILE_DISCONNECT);
                     passcode_attempts = 0;
                 } else {
@@ -632,7 +637,7 @@ void handle_mobile_disconnect(void) {
     k_msleep(1000);
 
     switch (current_event) {
-        case EVENT_FAILED:
+        case EVENT_FAIL:
             transition_to(STATE_FAIL);
             break;
         case EVENT_SUCCESS:
@@ -643,7 +648,7 @@ void handle_mobile_disconnect(void) {
             break;
     }
 
-    current_user = NULL;
+    // current_user = NULL;
 }
 
 // TAMPERING: Magnetometer signal received with no authorised connections
@@ -688,34 +693,41 @@ void handle_success(void) {
 	// Signal to servo motor, speaker and camera over MQTT
 	// TODO
 
-    // transition_to(STATE_BLOCKCHAIN);
+    transition_to(STATE_BLOCKCHAIN);
 }
 
 // FAIL: Appends the event to the blockchain
 void handle_blockchain(void) {
     printk("State: BLOCKCHAIN\n");
+
+    char event_time[16];
+    snprintf(event_time, sizeof(event_time), "%lld", current_event_time);
     
 	// Store the event on the blockchain
 	switch (previous_state) {
         case STATE_TAMPERING:
+            add_block(event_time, "TAMPERING", "Intruder", "N/A");
             printk("BLOCKCHAIN: TAMPERING event recorded.\n");
-            // add_block("test_time", "TAMPERING", "MY NAME", "AB:CD:EF:12:34:56");
             k_msleep(5000);
             break;
         case STATE_PRESENCE:
+            add_block(event_time, "PRESENCE", "Visitor", "N/A");
             printk("BLOCKCHAIN: PRESENCE event recorded.\n");
             k_msleep(5000);
             break;
 		case STATE_FAIL:
-            printk("BLOCKCHAIN: FAILED event recorded.\n");
+            add_block(event_time, "FAIL", current_user->alias, current_user->mac);
+            printk("BLOCKCHAIN: FAIL event recorded.\n");
             k_msleep(5000);
             break;
 		case STATE_SUCCESS:
+            add_block(event_time, "SUCCESS", current_user->alias, current_user->mac);
             printk("BLOCKCHAIN: SUCCESS event recorded.\n");
             k_msleep(5000);
+            servo_toggle();
             break;
         default:
-            // TODO
+            printk("BLOCKCHAIN: Unknown event.\n");
             break;
     }
 

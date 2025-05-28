@@ -12,7 +12,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/bluetooth/bluetooth.h>
-// #include <zephyr/bluetooth/services/nus.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
@@ -59,7 +58,7 @@ typedef enum {
     EVENT_NONE,
     EVENT_PRESENCE,
     EVENT_TAMPERING,
-    EVENT_FAILED,
+    EVENT_FAIL,
     EVENT_SUCCESS
 } event_type_t;
 
