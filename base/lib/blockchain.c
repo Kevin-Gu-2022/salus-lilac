@@ -33,7 +33,39 @@ static void to_sha256_hex(const char *input, char *output) {
     output[64] = '\0';
 }
 
+/**
+ * Add a block to the blockchain
+ */
 void add_block(const char *timestamp, const char *event, const char *user, const char *mac) {
+    struct fs_file_t file;
+    fs_file_t_init(&file);
+
+    // Default for first block
+    char prev_hash[HASH_SIZE] = "GENESIS";
+
+    // Attempt to read the last line from the file
+    if (fs_open(&file, BLOCKCHAIN_FILE, FS_O_READ) >= 0) {
+        char line[512];  // Adjust size as needed
+        char last_line[512] = {0};
+
+        while (fs_read_line(&file, line, sizeof(line)) > 0) {
+            strncpy(last_line, line, sizeof(last_line) - 1);  // Save the most recent
+        }
+
+        fs_close(&file);
+
+        if (strlen(last_line) > 0) {
+            cJSON *last_json = cJSON_Parse(last_line);
+            if (last_json) {
+                cJSON *curr_hash_field = cJSON_GetObjectItem(last_json, "curr_hash");
+                if (cJSON_IsString(curr_hash_field)) {
+                    strncpy(prev_hash, curr_hash_field->valuestring, HASH_SIZE - 1);
+                }
+                cJSON_Delete(last_json);
+            }
+        }
+    }
+    
     if (block_count >= MAX_BLOCKS) return;
 
     Block *new_block = &chain[block_count];
@@ -41,8 +73,6 @@ void add_block(const char *timestamp, const char *event, const char *user, const
     strncpy(new_block->event, event, sizeof(new_block->event) - 1);
     strncpy(new_block->user, user, sizeof(new_block->user) - 1);
     strncpy(new_block->MAC, mac, sizeof(new_block->MAC) - 1);
-
-    const char *prev_hash = (block_count > 0) ? chain[block_count - 1].curr_hash : "GENESIS";
     strncpy(new_block->prev_hash, prev_hash, HASH_SIZE - 1);
 
     // Build JSON without curr_hash
@@ -61,7 +91,6 @@ void add_block(const char *timestamp, const char *event, const char *user, const
 
     block_count++;
 
-    struct fs_file_t file;
     fs_file_t_init(&file);
     // Append to file
     int ret = fs_open(&file, BLOCKCHAIN_FILE, FS_O_CREATE | FS_O_WRITE | FS_O_APPEND);
