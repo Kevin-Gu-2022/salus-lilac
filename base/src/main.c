@@ -9,10 +9,13 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/shell/shell.h>
+#include <stdlib.h>
 #include "user.h"
 #include "fs.h"
-#include "bluetooth.h"
+#include "event.h"
 #include "servo.h"
+#include "keypad.h"
+#include "sensor.h"
 
 // Adding users command.
 static int cmd_user_add(const struct shell *shell, size_t argc, char **argv) {
@@ -91,15 +94,46 @@ static int cmd_user_view(const struct shell *shell, size_t argc, char **argv) {
     return 0;
 }
 
+static int cmd_sensor_ultrasonic(const struct shell *shell, size_t argc, char **argv) {
+    if (argc < 2) {
+        shell_error(shell, "Missing value. Usage: sensor u <value>");
+        return -EINVAL;
+    }
+    double val = strtod(argv[1], NULL);
+    sensor_set_ultrasonic_threshold(val);
+    shell_print(shell, "Ultrasonic threshold set to %.3f", val);
+    return 0;
+}
+
+static int cmd_sensor_magnetometer(const struct shell *shell, size_t argc, char **argv) {
+    if (argc < 2) {
+        shell_error(shell, "Missing value. Usage: sensor m <value>");
+        return -EINVAL;
+    }
+    double val = strtod(argv[1], NULL);
+    sensor_set_magnetometer_threshold(val);
+    shell_print(shell, "Magnetometer threshold set to %.3f", val);
+    return 0;
+}
+
+static int cmd_sensor_view(const struct shell *shell, size_t argc, char **argv) {
+    const sensor_threshold_t *t = sensor_get_thresholds();
+    shell_print(shell, "{Magnetometer Threshold: %s}", t->mag_threshold);
+    shell_print(shell, "{Ultrasonic Threshold: %s}", t->ultra_threshold);
+    return 0;
+}
+
 // Main.
 int main(void) {
     user_init();
+    sensor_threshold_init();
     fs_init();
     servo_init();
+    keypad_init();
     bluetooth_init();
 }
 
-// Subcommands for user configuration.
+// Subcommands for user and sensor configuration.
 SHELL_STATIC_SUBCMD_SET_CREATE(
     user_cmds,
     SHELL_CMD(add, NULL, "Add a user: -a <alias> -m <MAC address> -p <passcode>", cmd_user_add),
@@ -108,4 +142,13 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
     SHELL_SUBCMD_SET_END
 );
 
+SHELL_STATIC_SUBCMD_SET_CREATE(
+    sensor_cmds,
+    SHELL_CMD(u, NULL, "Set ultrasonic threshold: sensor u <value>", cmd_sensor_ultrasonic),
+    SHELL_CMD(m, NULL, "Set magnetometer threshold: sensor m <value>", cmd_sensor_magnetometer),
+    SHELL_CMD(view, NULL, "View current sensor thresholds", cmd_sensor_view),
+    SHELL_SUBCMD_SET_END
+);
+
 SHELL_CMD_REGISTER(user, &user_cmds, "User entry access configuration commands.", NULL);
+SHELL_CMD_REGISTER(sensor, &sensor_cmds, "Sensor threshold configuration commands.", NULL);

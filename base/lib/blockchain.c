@@ -5,6 +5,8 @@
 #include <cJSON.h>
 #include <zephyr/logging/log.h>
 #include <mbedtls/sha256.h>
+#include <zephyr/fs/fs.h>
+#include "fs.h"
 #include "blockchain.h"
 
 LOG_MODULE_REGISTER(blockchain, LOG_LEVEL_DBG);
@@ -59,11 +61,13 @@ void add_block(const char *timestamp, const char *event, const char *user, const
 
     block_count++;
 
-    /* Uncomment if file system exists
-
+    struct fs_file_t file;
+    fs_file_t_init(&file);
     // Append to file
-    FILE *fp = fopen(BLOCKCHAIN_FILE, "a");
-    if (fp) {
+    int ret = fs_open(&file, BLOCKCHAIN_FILE, FS_O_CREATE | FS_O_WRITE | FS_O_APPEND);
+    if (ret < 0) {
+        printk("Failed to open blockchain file\n");
+    } else {
         cJSON *full_json = cJSON_CreateObject();
         cJSON_AddStringToObject(full_json, "timestamp", new_block->timestamp);
         cJSON_AddStringToObject(full_json, "event", new_block->event);
@@ -73,24 +77,29 @@ void add_block(const char *timestamp, const char *event, const char *user, const
         cJSON_AddStringToObject(full_json, "curr_hash", new_block->curr_hash);
 
         char *line = cJSON_PrintUnformatted(full_json);
-        fprintf(fp, "%s\n", line);
+        
+        if (line) {
+            fs_write(&file, line, strlen(line));
+            fs_write(&file, "\n", 1);
+        } else {
+            printk("Failed to serialize block to JSON\n");
+        }
 
-        fclose(fp);
+        fs_close(&file);
         cJSON_Delete(full_json);
         free(line);
-    } else {
-        printk("Failed to open blockchain file\n");
     }
-    
-    */
 }
 
 /**
  * Validate all blocks in blockchain file
  */
 bool validate_chain_from_file(void) {
-    FILE *fp = fopen(BLOCKCHAIN_FILE, "r");
-    if (!fp) {
+    struct fs_file_t file;
+    fs_file_t_init(&file);
+
+    int ret = fs_open(&file, BLOCKCHAIN_FILE, FS_O_READ);
+    if (ret < 0) {
         printk("Failed to open blockchain file\n");
         return false;
     }
@@ -99,10 +108,10 @@ bool validate_chain_from_file(void) {
     Block prev = {0}, curr;
     bool first = true;
 
-    while (fgets(line, sizeof(line), fp)) {
+    while (fs_read_line(&file, line, sizeof(line)) > 0) {
         cJSON *json = cJSON_Parse(line);
         if (!json) {
-            fclose(fp);
+            fs_close(&file);
             printk("Invalid JSON in file\n");
             return false;
         }
@@ -132,7 +141,7 @@ bool validate_chain_from_file(void) {
                 cJSON_Delete(json);
                 cJSON_Delete(rebuild);
                 free(serialized);
-                fclose(fp);
+                fs_close(&file);
                 return false;
             }
 
@@ -145,7 +154,7 @@ bool validate_chain_from_file(void) {
         first = false;
     }
 
-    fclose(fp);
+    fs_close(&file);
     return true;
 }
 
@@ -195,13 +204,37 @@ void print_chain(void) {
     }
 }
 
+void blockchain_init(void) {
+    struct fs_file_t file;
+    fs_file_t_init(&file);
+    
+    int err = fs_open(&file, BLOCKCHAIN_FILE, FS_O_READ);
+    if (err < 0) {
+        if (err == -ENOENT) {
+            // File doesn't exist, create it
+            LOG_INF("Blockchain not found, creating new file...\n");
+            err = fs_open(&file, BLOCKCHAIN_FILE, FS_O_CREATE | FS_O_WRITE);
+            if (err < 0) {
+                LOG_ERR("Failed to create blockchain file: %d\n", err);
+                return;
+            }
+            fs_close(&file);
+            return;
+        } else {
+            LOG_ERR("Error opening user blockchain file: %d\n", err);
+            return;
+        }
+    }
+}
+
 /**
  * Thread that periodically checks blockchain
  */
 void blockchain_validation_thread() {
+    blockchain_init();
 
     for (;;) {
-        K_SLEEP(K_MSEC(15000));
+        k_msleep(15000);
         if (!validate_chain_from_file()) {
             LOG_ERR("Blockchain tampered!");
         } else {
