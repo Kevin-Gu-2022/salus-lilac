@@ -24,10 +24,11 @@ const char *state_names[] = {
 
 // Global pointer to the currently authenticated user
 user_config_t *current_user = NULL;
+user_config_t *last_failed_user = NULL;
 
 static system_state_t current_state = STATE_IDLE;
 system_state_t previous_state = STATE_IDLE;
-static event_type_t sensor_event = EVENT_NONE;
+static event_type_t current_event = EVENT_NONE;
 
 // Prototypes for state handlers
 void transition_to(system_state_t next_state);
@@ -56,10 +57,12 @@ K_MSGQ_DEFINE(mobile_mac_msgq, MAC_ADDRESS_LENGTH, MSGQ_SIZE, 4);
 // K_MSGQ_DEFINE(user_passcode_msgq, PASSCODE_LENGTH, MSGQ_SIZE, 4);
 K_MSGQ_DEFINE(sensor_msgq, MAX_NOTIFY_LEN, MSGQ_SIZE, 4);
 K_MSGQ_DEFINE(mobile_msgq, MAX_NOTIFY_LEN, MSGQ_SIZE, 4);
-K_SEM_DEFINE(mobile_disconnect_sem, 0, 1);
 K_SEM_DEFINE(sensor_connect_sem, 0, 1);
 K_SEM_DEFINE(sensor_disconnect_sem, 0, 1);
+K_SEM_DEFINE(sensor_reconnect_sem, 0, 1);
 K_SEM_DEFINE(mobile_connect_sem, 0, 1);
+K_SEM_DEFINE(mobile_disconnect_sem, 0, 1);
+K_SEM_DEFINE(mobile_reconnect_sem, 0, 1);
 
 static const bt_addr_le_t sensor_mac = {
     .type = BT_ADDR_LE_RANDOM,
@@ -84,6 +87,12 @@ bool is_mac_allowed(const bt_addr_le_t *addr, char *out_mac, size_t out_mac_len)
     user_config_t *user;
     SYS_SLIST_FOR_EACH_CONTAINER(&user_config_list, user, node) {
         if (strcmp(user->mac, addr_str) == 0) {
+            if (user == last_failed_user) {
+                // If this user was the last failed attempt, ignore them
+                printk("Ignoring last failed user: %s\n", user->alias);
+                return false;
+            }
+            
             // Copy the valid MAC string to the caller's buffer
             strncpy(out_mac, addr_str, out_mac_len - 1);
             out_mac[out_mac_len - 1] = '\0';  // Ensure null termination
@@ -160,7 +169,7 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type, st
             }
         }
     } else if (current_state == STATE_MOBILE_CONNECT) {
-        if (is_mac_allowed(addr, dev, sizeof(dev))) {
+        if (is_mac_allowed(addr, dev, sizeof(dev))) {            
             err = bt_le_scan_stop();
             if (err) {
                 printk("Scan stop failed (err %d)\n", err);
@@ -237,8 +246,12 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
 
     if (current_state == STATE_SENSOR_DISCONNECT) {
         k_sem_give(&sensor_disconnect_sem);
+    } else if (current_state == STATE_SENSOR_DATA) {
+        k_sem_give(&sensor_reconnect_sem);
     } else if (current_state == STATE_MOBILE_DISCONNECT) {
         k_sem_give(&mobile_disconnect_sem);
+    } else if (current_state == STATE_MOBILE_DATA) {
+        k_sem_give(&mobile_reconnect_sem);
     }
     // start_scan_func();
 }
@@ -355,14 +368,6 @@ int ultrasonic_event(const char *data_str) {
 // Finite state machine thread.
 void fsm_thread(void) {
 	while (1) {
-        
-        // if (k_sem_take(&mobile_disconnect_sem, K_NO_WAIT) == 0) {
-        //     // User disconnected, reset current user
-        //     printk("User disconnected, resetting current user\n");
-        //     current_user = NULL;
-        //     transition_to(STATE_IDLE);
-        // }
-        
         switch (current_state) {
             case STATE_IDLE:
                 handle_idle();
@@ -420,8 +425,8 @@ void transition_to(system_state_t next_state) {
 // IDLE: Starting state
 void handle_idle(void) {
     printk("State: IDLE\n");
-    k_msleep(5000);
-    sensor_event = EVENT_NONE;
+    k_msleep(2500);
+    current_event = EVENT_NONE;
     transition_to(STATE_SENSOR_CONNECT);
 }
 
@@ -442,7 +447,7 @@ void handle_sensor_data(void) {
 
     char notify_buffer[MAX_NOTIFY_LEN];
 
-    if (k_msgq_get(&sensor_msgq, notify_buffer, K_FOREVER) == 0) {
+    if (k_msgq_get(&sensor_msgq, notify_buffer, K_MSEC(100)) == 0) {
         
         int comma_count = 0;
         for (char *p = notify_buffer; *p != '\0'; ++p) {
@@ -456,7 +461,7 @@ void handle_sensor_data(void) {
             printk("Received Magnetometer data\n");
             if (magnetometer_event(notify_buffer)) {
                 printk("Tampering detected!\n");
-                sensor_event = EVENT_TAMPERING;
+                current_event = EVENT_TAMPERING;
                 transition_to(STATE_SENSOR_DISCONNECT);
                 return;
             }
@@ -465,11 +470,16 @@ void handle_sensor_data(void) {
             printk("Received Ultrasonic data\n");
             if (ultrasonic_event(notify_buffer)) {
                 printk("Presence detected!\n");
-                sensor_event = EVENT_PRESENCE;
+                current_event = EVENT_PRESENCE;
                 transition_to(STATE_SENSOR_DISCONNECT);
                 return;
             }
         }
+    }
+
+    // Sensor disconnected, try and reconnect
+    if (k_sem_take(&sensor_reconnect_sem, K_NO_WAIT) == 0) {
+        transition_to(STATE_SENSOR_CONNECT);
     }
 }
 
@@ -510,15 +520,15 @@ void handle_mobile_connect(void) {
             k_mutex_unlock(&user_config_list_mutex);
         }
 
-        printk("User is %s!!!!!!!!!\n", current_user->alias);
+        printk("%s is connected!\n", current_user->alias);
 
         // On mobile device connect event:
         transition_to(STATE_MOBILE_DATA);
     } else {
-        if (sensor_event == EVENT_TAMPERING) {
+        if (current_event == EVENT_TAMPERING) {
             // If tampering detected, go to TAMPERING state
             transition_to(STATE_TAMPERING);
-        } else if (sensor_event == EVENT_PRESENCE) {
+        } else if (current_event == EVENT_PRESENCE) {
             // If presence detected, go to PRESENCE state
             transition_to(STATE_PRESENCE);
         }
@@ -527,7 +537,12 @@ void handle_mobile_connect(void) {
 
 // MOBILE_DATA: Communicate with mobile device
 void handle_mobile_data(void) {
-    printk("State: MOBILE_DATA\n");
+    // printk("State: MOBILE_DATA\n");
+
+    // Mobile disconnected, try and reconnect
+    if (k_sem_take(&mobile_reconnect_sem, K_NO_WAIT) == 0) {
+        transition_to(STATE_MOBILE_CONNECT);
+    }
 
     // Track the number of passcode attempts
 	static int passcode_attempts = 0;
@@ -536,48 +551,97 @@ void handle_mobile_data(void) {
 
     char key = keypad_scan();
 
-    if (key != '\0') {
-        printk("Key pressed: %c\n", key);
-        bluetooth_write("15");  // Send key to Bluetooth
+    if (key != '\0' && ((key >= '0' && key <= '9') || key == 'D' || key == 'E' || key == 'C')) {
+        // printk("Key pressed: %c\n", key);
 
-        if (input_index < PASSCODE_LENGTH - 1) {  // collect max 4 chars
-            input_buffer[input_index++] = key;
-            input_buffer[input_index] = '\0';  // null-terminate buffer
-        }
+        if (key == 'C') {  // 'C' for Clear
+            input_index = 0;  // Reset index for next input
+            memset(input_buffer, 0, sizeof(input_buffer));  // Clear buffer
+        } else if (key == 'D') {  // 'D' for Delete
+            if (input_index > 0) {
+                input_index--;
+                input_buffer[input_index] = '\0';
+            }
+        } else if (key >= '0' && key <= '9') {
+            if (input_index < PASSCODE_LENGTH - 1) {
+                input_buffer[input_index++] = key;
+                input_buffer[input_index] = '\0';
+            } else {
+                // Ignore if passcode is already full
+                return;
+            }
+        } else if (key == 'E') { // 'E' for Delete
+            if (input_index != PASSCODE_LENGTH - 1) {
+                // Ignore enter if passcode not fully entered
+                return;
+            }
 
-        // If buffer full (4 chars), compare passcode
-        if (input_index == PASSCODE_LENGTH - 1) {
             if (strncmp(input_buffer, current_user->passcode, PASSCODE_LENGTH - 1) == 0) {
-                printk("Correct passcode for user: %s\n", current_user->alias);
-                bluetooth_write("CORRECT");
-                transition_to(STATE_SUCCESS);
+                printk("Correct! Welcome %s!\n", current_user->alias);
+                bluetooth_write("Y");
+                current_event = EVENT_SUCCESS;
+                transition_to(STATE_MOBILE_DISCONNECT);
                 passcode_attempts = 0;
             } else {
                 passcode_attempts++;
-                bluetooth_write("FAILED");
-
                 if (passcode_attempts >= PASSCODE_ATTEMPTS) {
-                    bluetooth_write("INCORRECT");
-                    transition_to(STATE_FAIL);
+                    printk("%s has been temporarily locked out.\n", current_user->alias);
+                    bluetooth_write("F");
+                    current_event = EVENT_FAILED;
+                    transition_to(STATE_MOBILE_DISCONNECT);
                     passcode_attempts = 0;
                 } else {
-                    transition_to(STATE_MOBILE_DATA);
+                    printk("Incorrect! Please try again %s.\n", current_user->alias);
+                    bluetooth_write("N");
                 }
             }
-            // Reset buffer for next input
+
+            // Clear input after processing
             input_index = 0;
             memset(input_buffer, 0, sizeof(input_buffer));
+            return;
         }
+
+        char display_buffer[DISPLAY_BUFFER_SIZE];
+        int attempts_remaining = PASSCODE_ATTEMPTS - passcode_attempts;
+        display_buffer[0] = '0' + attempts_remaining;
+        display_buffer[1] = ':';
+
+        
+        for (int i = 0; i < PASSCODE_LENGTH - 1; ++i) {
+            if (i < input_index) {
+                display_buffer[i + 2] = input_buffer[i];
+            } else {
+                display_buffer[i + 2] = '-';
+            }
+        }
+        display_buffer[DISPLAY_BUFFER_SIZE - 1] = '\0';
+        printk("Sending: %s\n", display_buffer);
+        bluetooth_write(display_buffer);
     }
 }
 
 // MOBILE_DISCONNECT: Disconnect mobile and go idle
 void handle_mobile_disconnect(void) {
-    // printk("State: MOBILE_DISCONNECT\n");
+    printk("State: MOBILE_DISCONNECT\n");
 
-    // if (mobile_disconnected()) {
-    //     transition_to(STATE_IDLE);
-    // }
+    bluetooth_disconnect();
+
+    k_sem_take(&mobile_disconnect_sem, K_FOREVER);
+
+    k_msleep(1000);
+
+    switch (current_event) {
+        case EVENT_FAILED:
+            transition_to(STATE_FAIL);
+            break;
+        case EVENT_SUCCESS:
+            transition_to(STATE_SUCCESS);
+            break;
+        default:
+            printk("Unkown state.\n");
+            break;
+    }
 
     current_user = NULL;
 }
@@ -608,6 +672,7 @@ void handle_presence(void) {
 // FAIL: Incorrect passcode and attempt limit was reached
 void handle_fail(void) {
     printk("State: FAIL\n");
+    last_failed_user = current_user;
 
     // Signal to speaker and camera over MQTT
 	// TODO
@@ -634,7 +699,7 @@ void handle_blockchain(void) {
 	switch (previous_state) {
         case STATE_TAMPERING:
             printk("BLOCKCHAIN: TAMPERING event recorded.\n");
-            add_block("test_time", "TAMPERING", "MY NAME", "AB:CD:EF:12:34:56");
+            // add_block("test_time", "TAMPERING", "MY NAME", "AB:CD:EF:12:34:56");
             k_msleep(5000);
             break;
         case STATE_PRESENCE:
@@ -642,10 +707,12 @@ void handle_blockchain(void) {
             k_msleep(5000);
             break;
 		case STATE_FAIL:
-            // TODO
+            printk("BLOCKCHAIN: FAILED event recorded.\n");
+            k_msleep(5000);
             break;
 		case STATE_SUCCESS:
-            // TODO
+            printk("BLOCKCHAIN: SUCCESS event recorded.\n");
+            k_msleep(5000);
             break;
         default:
             // TODO

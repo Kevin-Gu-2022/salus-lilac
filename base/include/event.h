@@ -36,6 +36,7 @@
 #define DEVICE_NAME_LEN		   (sizeof(DEVICE_NAME) - 1)
 #define MSGQ_SIZE              10
 #define MOBILE_CONNECT_TIMEOUT K_SECONDS(10)
+#define DISPLAY_BUFFER_SIZE 7
 
 typedef enum {
     STATE_IDLE,
@@ -58,6 +59,8 @@ typedef enum {
     EVENT_NONE,
     EVENT_PRESENCE,
     EVENT_TAMPERING,
+    EVENT_FAILED,
+    EVENT_SUCCESS
 } event_type_t;
 
 extern const char *state_names[STATE_MAX];
