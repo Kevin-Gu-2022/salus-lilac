@@ -604,7 +604,6 @@ void handle_mobile_data(void) {
             // Clear input after processing
             input_index = 0;
             memset(input_buffer, 0, sizeof(input_buffer));
-            return;
         }
 
         char display_buffer[DISPLAY_BUFFER_SIZE];
