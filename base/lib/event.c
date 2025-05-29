@@ -30,6 +30,8 @@ static system_state_t current_state = STATE_IDLE;
 system_state_t previous_state = STATE_IDLE;
 static event_type_t current_event = EVENT_NONE;
 static int64_t current_event_time = 0;
+static char last_mag_meas[SENSOR_MEAS_LENGTH] = "N/A";
+static char last_ultra_meas[SENSOR_MEAS_LENGTH] = "N/A";
 
 // Prototypes for state handlers
 void transition_to(system_state_t next_state);
@@ -340,7 +342,9 @@ int magnetometer_event(const char *data_str) {
     // Compare with baseline
     double diff_sq = fabs(mag_sq - MAG_BASELINE_SQ);
 
-    printk("diff_sq: %.3f, threshold: %.3f\n", diff_sq, sensor_get_magnetometer_threshold());
+    snprintf(last_mag_meas, sizeof(last_mag_meas), "%.3f", diff_sq);
+
+    // printk("diff_sq: %.3f, threshold: %.3f\n", diff_sq, sensor_get_magnetometer_threshold());
 
     if (diff_sq > sensor_get_magnetometer_threshold()) {
         // Significant change detected
@@ -357,6 +361,8 @@ int ultrasonic_event(const char *data_str) {
     if (sscanf(data_str, "%lf", &distance) != 1) {
         return -EINVAL; // Parsing error
     }
+
+    snprintf(last_ultra_meas, sizeof(last_ultra_meas), "%.3f", distance);
 
     if (distance <= sensor_get_ultrasonic_threshold()) {
         // Significant change detected
@@ -715,22 +721,22 @@ void handle_blockchain(void) {
 	// Store the event on the blockchain
 	switch (previous_state) {
         case STATE_TAMPERING:
-            add_block(event_time, "TAMPERING", "Intruder", "N/A");
+            add_block(event_time, "TAMPERING", last_mag_meas, last_ultra_meas, "Intruder", "N/A");
             printk("BLOCKCHAIN: TAMPERING event recorded.\n");
             k_msleep(5000);
             break;
         case STATE_PRESENCE:
-            add_block(event_time, "PRESENCE", "Visitor", "N/A");
+            add_block(event_time, "PRESENCE", last_mag_meas, last_ultra_meas, "Visitor", "N/A");
             printk("BLOCKCHAIN: PRESENCE event recorded.\n");
             k_msleep(5000);
             break;
 		case STATE_FAIL:
-            add_block(event_time, "FAIL", current_user->alias, current_user->mac);
+            add_block(event_time, "FAIL", last_mag_meas, last_ultra_meas, current_user->alias, current_user->mac);
             printk("BLOCKCHAIN: FAIL event recorded.\n");
             k_msleep(5000);
             break;
 		case STATE_SUCCESS:
-            add_block(event_time, "SUCCESS", current_user->alias, current_user->mac);
+            add_block(event_time, "SUCCESS", last_mag_meas, last_ultra_meas, current_user->alias, current_user->mac);
             printk("BLOCKCHAIN: SUCCESS event recorded.\n");
             k_msleep(5000);
             servo_toggle();
