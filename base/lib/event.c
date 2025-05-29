@@ -270,6 +270,14 @@ static int write_cmd(struct bt_conn *conn, const char *string) {
     return bt_gatt_write_without_response(conn, TARGET_HANDLE, string, strlen(string), false);
 }
 
+static int write_int(struct bt_conn *conn, uint64_t *time) {
+    if (!time || !conn) {
+        return -EINVAL;
+    }
+
+    return bt_gatt_write_without_response(conn, TARGET_HANDLE, time, false);
+}
+
 void config_mac_addr(void) {
 	int err;
 
@@ -295,6 +303,21 @@ void bluetooth_write(const char *string) {
 		struct bt_conn *conn = bt_conn_ref(conn_connected);
 		if (conn) {
 			int err = write_cmd(conn, string);
+			bt_conn_unref(conn);
+			if (err) {
+				printk("Write failed (err %d)\n", err);
+			} else {
+				printk("Write successful\n");
+			}
+		}
+	}
+}
+
+void bluetooth_write_int(uint64_t *data) {
+	if (conn_connected) {
+		struct bt_conn *conn = bt_conn_ref(conn_connected);
+		if (conn) {
+			int err = write_int(conn, data);
 			bt_conn_unref(conn);
 			if (err) {
 				printk("Write failed (err %d)\n", err);
@@ -448,7 +471,7 @@ void handle_sensor_data(void) {
 
     char notify_buffer[MAX_NOTIFY_LEN];
 
-    if (k_msgq_get(&sensor_msgq, notify_buffer, K_MSEC(100)) == 0) {
+    if (k_msgq_get(&sensor_msgq, notify_buffer, K_NO_WAIT) == 0) {
         
         int comma_count = 0;
         for (char *p = notify_buffer; *p != '\0'; ++p) {
@@ -456,7 +479,6 @@ void handle_sensor_data(void) {
                 comma_count++;
             }
         }
-
         if (comma_count == 2) {
             // Magnetometer data
             printk("Received Magnetometer data\n");
@@ -479,6 +501,10 @@ void handle_sensor_data(void) {
             }
         }
     }
+
+    // Send the current time across
+    uin64_t currentTime = k_uptime_get();
+    bluetooth_write_int(&currentTime);
 
     // Sensor disconnected, try and reconnect
     if (k_sem_take(&sensor_reconnect_sem, K_NO_WAIT) == 0) {
