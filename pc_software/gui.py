@@ -83,7 +83,7 @@ class SensorGUI(QWidget):
         font.setPointSize(12)
 
         sensors = ["Ultrasonic", "Accel"]
-        sensor_labels = ["Ultrasonic (m)", "Accel (normalized²)"]
+        sensor_labels = ["Ultrasonic (m)", "Magnetometer (normalized²)"]
         self.sensors = sensors
 
         sensor_ranges = {
