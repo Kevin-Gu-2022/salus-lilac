@@ -2,10 +2,13 @@ import sys
 import os
 import serial
 import json
+import re
 import time
+import subprocess
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QLabel, QSlider,
-    QHBoxLayout, QPushButton, QTextEdit, QFileDialog, QMessageBox
+    QHBoxLayout, QPushButton, QFileDialog, QMessageBox,
+    QTextEdit, QLineEdit
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -17,41 +20,60 @@ try:
     ser = serial.Serial('/dev/ttyACM0', 115200, timeout=1)
 except serial.SerialException as e:
     print(f"Could not open serial port /dev/ttyACM0: {e}")
-    print("Serial communication will be disabled. Only RTT.log reading will function.")
+    print("Serial communication will be disabled.")
     ser = None
 
 PATH = "RTT.log"
 
-class SerialReader(QThread):
+
+
+def ansi_to_html_with_cleanup(text):
+    # Remove non-color ANSI sequences (cursor moves, clears, etc.)
+    text = re.sub(r'\x1b\[(?:[0-9;?]*[A-Za-z])', lambda m: '' if m.group(0) not in ['\x1b[0m', '\x1b[1;32m'] else m.group(0), text)
+
+    # Map supported ANSI color codes to HTML
+    ansi_colors = {
+        '1;32': '<span style="color:green; font-weight:bold">',
+        '0': '</span>',  # reset
+    }
+
+    def replace_color(match):
+        code = match.group(1)
+        return ansi_colors.get(code, '')
+
+    text = re.sub(r'\x1b\[([0-9;]*)m', replace_color, text)
+
+    # Close unclosed spans
+    open_spans = text.count('<span')
+    close_spans = text.count('</span>')
+    if open_spans > close_spans:
+        text += '</span>' * (open_spans - close_spans)
+
+    return text
+
+class SerialShellReader(QThread):
     received = pyqtSignal(str)
 
     def run(self):
-        try:
-            with open(PATH, 'r') as file:
-                file.seek(0, 2)
-                print(f"Tailing log file: {PATH}")
-                while True:
-                    line = file.readline()
-                    if not line:
-                        time.sleep(0.2)
-                        continue
-                    try:
-                        entry = json.loads(line.strip())
-                        self.received.emit(json.dumps(entry))
-                    except json.JSONDecodeError:
-                        print(f"Invalid JSON format, skipping line: {line.strip()}")
-                    except Exception as e:
-                        print(f"[ERROR] Unexpected error while processing line: {e} - Line: {line.strip()}")
-        except FileNotFoundError:
-            print(f"Error: The file '{PATH}' was not found.")
-        except Exception as e:
-            print(f"An error occurred in SerialReader thread: {e}")
+        if not ser:
+            return
+        while True:
+            try:
+                if ser.in_waiting:
+                    data = ser.readline().decode(errors="ignore").strip()
+                    if data:
+                        self.received.emit(data)
+                else:
+                    time.sleep(0.1)
+            except Exception as e:
+                print(f"Serial read error: {e}")
+                time.sleep(1)
 
 class SensorGUI(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sensor Thresholds")
-        self.resize(700, 400)
+        self.setWindowTitle("Sensor Thresholds + Serial Shell")
+        self.resize(700, 500)
 
         layout = QVBoxLayout()
         self.sliders = {}
@@ -65,8 +87,8 @@ class SensorGUI(QWidget):
         self.sensors = sensors
 
         sensor_ranges = {
-            "Ultrasonic": (0, 5000),  # Represent 0.000–5.000 m
-            "Accel": (0, 100),        # Represent 0.00–1.00
+            "Ultrasonic": (0, 5000),  # 0.000–5.000 m
+            "Accel": (0, 100),        # 0.00–1.00
         }
 
         for index, sensor in enumerate(sensors):
@@ -100,15 +122,23 @@ class SensorGUI(QWidget):
         self.send_file_button.clicked.connect(self.open_file_dialog)
         layout.addWidget(self.send_file_button)
 
-        self.rx_display = QTextEdit()
-        self.rx_display.setReadOnly(True)
-        self.rx_display.setFont(font)
-        layout.addWidget(self.rx_display)
+        # Shell Output
+        layout.addWidget(QLabel("Serial Shell Output:"))
+        self.shell_output = QTextEdit()
+        self.shell_output.setReadOnly(True)
+        self.shell_output.setFont(font)
+        layout.addWidget(self.shell_output)
+
+        self.shell_input = QLineEdit()
+        self.shell_input.setPlaceholderText("Enter command to send to /dev/ttyACM0 and press Enter")
+        self.shell_input.setFont(font)
+        self.shell_input.returnPressed.connect(self.run_serial_command)
+        layout.addWidget(self.shell_input)
 
         self.setLayout(layout)
 
-        self.serial_thread = SerialReader()
-        self.serial_thread.received.connect(self.handle_serial_data)
+        self.serial_thread = SerialShellReader()
+        self.serial_thread.received.connect(self.update_shell_output)
         self.serial_thread.start()
 
     def slider_changed(self, sensor, value, label):
@@ -153,11 +183,21 @@ class SensorGUI(QWidget):
         rel_path = os.path.relpath(file_path)
         send_image("bounding_boxed.jpg")
 
-    def handle_serial_data(self, data):
-        if data.startswith("{"):
-            self.rx_display.append(f"{data}")
-        else:
-            print(f"Received non-JSON data from thread (should not happen): {data}")
+    def run_serial_command(self):
+        cmd = self.shell_input.text().strip()
+        if not cmd or not ser:
+            return
+        try:
+            self.shell_output.append(f"> {cmd}")
+            ser.write((cmd + "\n").encode())
+        except Exception as e:
+            self.shell_output.append(f"<span style='color:red;'>Error writing to serial: {e}</span>")
+        self.shell_input.clear()
+
+    def update_shell_output(self, text):
+        html = ansi_to_html_with_cleanup(text)
+        html = f'<pre style="font-family: monospace; white-space: pre-wrap;">{html}</pre>'
+        self.shell_output.append(html)
 
     def show_message_box(self, title, message):
         msg_box = QMessageBox()
