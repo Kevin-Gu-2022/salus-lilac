@@ -41,7 +41,6 @@ static void received(struct bt_conn *conn, const void *data, uint16_t len, void 
 	ARG_UNUSED(conn);
 	ARG_UNUSED(ctx);
 
-<<<<<<< Updated upstream
     uint32_t base_unit_time_received = *(uint32_t*)data;
     uint32_t sensor_local_time_at_reception = (uint32_t) k_uptime_get(); // Capture local time immediately!
 
@@ -54,9 +53,6 @@ static void received(struct bt_conn *conn, const void *data, uint16_t len, void 
     time_sync_add_data_point(&sensor_node_time_sync_state, base_unit_time_received, sensor_local_time_at_reception);
 
 	printk("%s() - Len: %d, Message: %.*s\n", __func__, len, len, (char *)data);
-=======
-	printk("%s() - Len: %d, Message: %.*lld\n", __func__, len, len, *(uint64_t*)data);
->>>>>>> Stashed changes
 }
 
 static void connected(struct bt_conn *conn, uint8_t err) {
