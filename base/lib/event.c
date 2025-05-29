@@ -10,6 +10,7 @@
 const char *state_names[] = {
     "IDLE",
     "SENSOR_CONNECT",
+    "SENSOR_SYNC",
     "SENSOR_DATA",
     "SENSOR_DISCONNECT",
     "MOBILE_CONNECT",
@@ -37,6 +38,7 @@ static char last_ultra_meas[SENSOR_MEAS_LENGTH] = "N/A";
 void transition_to(system_state_t next_state);
 void handle_idle(void);
 void handle_sensor_connect(void);
+void handle_sensor_sync(void);
 void handle_sensor_data(void);
 void handle_sensor_disconnect(void);
 void handle_mobile_connect(void);
@@ -57,7 +59,6 @@ void handle_blockchain(void);
 
 // Define message queues.
 K_MSGQ_DEFINE(mobile_mac_msgq, MAC_ADDRESS_LENGTH, MSGQ_SIZE, 4);
-// K_MSGQ_DEFINE(user_passcode_msgq, PASSCODE_LENGTH, MSGQ_SIZE, 4);
 K_MSGQ_DEFINE(sensor_msgq, MAX_NOTIFY_LEN, MSGQ_SIZE, 4);
 K_MSGQ_DEFINE(mobile_msgq, MAX_NOTIFY_LEN, MSGQ_SIZE, 4);
 K_SEM_DEFINE(sensor_connect_sem, 0, 1);
@@ -277,7 +278,7 @@ static int write_int(struct bt_conn *conn, uint64_t *time) {
         return -EINVAL;
     }
 
-    return bt_gatt_write_without_response(conn, TARGET_HANDLE, time, false);
+    return bt_gatt_write_without_response(conn, TARGET_HANDLE, time, sizeof(uint64_t), false);
 }
 
 void config_mac_addr(void) {
@@ -405,6 +406,9 @@ void fsm_thread(void) {
             case STATE_SENSOR_CONNECT:
                 handle_sensor_connect();
                 break;
+            case STATE_SENSOR_SYNC:
+                handle_sensor_sync();
+                break;
             case STATE_SENSOR_DATA:
                 handle_sensor_data();
                 break;
@@ -457,6 +461,8 @@ void handle_idle(void) {
     printk("State: IDLE\n");
     k_msleep(2500);
     current_event = EVENT_NONE;
+    strcpy(last_ultra_meas, "N/A");
+    strcpy(last_mag_meas, "N/A");
     transition_to(STATE_SENSOR_CONNECT);
 }
 
@@ -468,8 +474,25 @@ void handle_sensor_connect(void) {
 
     k_sem_take(&sensor_connect_sem, K_FOREVER);
 
-    transition_to(STATE_SENSOR_DATA);
+    transition_to(STATE_SENSOR_SYNC);
 }
+
+// SENSOR_SYNC: Synchronise time between sensor and base nodes
+void handle_sensor_sync(void) {
+    printk("State: SENSOR_SYNC\n");
+
+    static int sync_attempts = 0;    
+
+    // Send the current time across
+    uint64_t currentTime = k_uptime_get();
+    bluetooth_write_int(&currentTime);
+    sync_attempts++;
+
+    if (sync_attempts >= SENSOR_SYNC_ATTEMPTS) {
+        transition_to(STATE_SENSOR_DATA);
+    }
+}
+
 
 // SENSOR_DATA: Receive/process sensor data
 void handle_sensor_data(void) {
@@ -507,10 +530,6 @@ void handle_sensor_data(void) {
             }
         }
     }
-
-    // Send the current time across
-    uin64_t currentTime = k_uptime_get();
-    bluetooth_write_int(&currentTime);
 
     // Sensor disconnected, try and reconnect
     if (k_sem_take(&sensor_reconnect_sem, K_NO_WAIT) == 0) {
@@ -663,7 +682,6 @@ void handle_mobile_data(void) {
     // Mobile disconnected, try and reconnect
     if (k_sem_take(&mobile_reconnect_sem, K_NO_WAIT) == 0) {
         transition_to(STATE_MOBILE_CONNECT);
-        // keypad_init();
     }
 }
 
