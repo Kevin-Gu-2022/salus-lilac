@@ -25,5 +25,6 @@
 
 extern int bluetooth_init(void);
 extern void bluetooth_write(const char *msg, size_t len);
+extern uint32_t get_synchronized_time_ms();
 
 #endif

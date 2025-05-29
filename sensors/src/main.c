@@ -11,6 +11,7 @@
 #include <zephyr/shell/shell.h>
 #include <zephyr/drivers/sensor.h>
 #include "bluetooth.h"
+#include "time_sync.h"
 
 const struct device *ultrasonic_dev;
 const struct device *magnetometer_dev;
@@ -101,5 +102,8 @@ int main(void) {
         k_msleep(250);
         magnetometer_measure(magnetometer_dev);
         k_msleep(250);
+
+        update_time_sync_regression();
+
     }
 }
