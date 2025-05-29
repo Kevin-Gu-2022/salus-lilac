@@ -591,6 +591,7 @@ void handle_mobile_data(void) {
         // Clear passcode input
         input_index = 0;
         memset(input_buffer, 0, sizeof(input_buffer));
+        passcode_attempts = 0;
         clear_passcode = false;
     }
 
