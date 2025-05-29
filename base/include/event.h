@@ -36,6 +36,7 @@
 #define MSGQ_SIZE              10
 #define MOBILE_CONNECT_TIMEOUT K_SECONDS(10)
 #define DISPLAY_BUFFER_SIZE 7
+#define SENSOR_MEAS_LENGTH 10
 
 typedef enum {
     STATE_IDLE,
