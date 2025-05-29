@@ -5,8 +5,11 @@
 */
 
 #include "bluetooth.h"
+#include "time_sync.h"
 
-LOG_MODULE_REGISTER(camera, LOG_LEVEL_DBG);
+
+
+LOG_MODULE_REGISTER(bluetooth, LOG_LEVEL_DBG);
 
 struct bt_conn *conn_connected = NULL;
 
@@ -25,6 +28,7 @@ static const struct bt_data sd[] = {
 
 static struct k_work_delayable adv_restart_work;
 
+
 static void notif_enabled(bool enabled, void *ctx)
 {
 	ARG_UNUSED(ctx);
@@ -36,6 +40,17 @@ static void received(struct bt_conn *conn, const void *data, uint16_t len, void 
 {
 	ARG_UNUSED(conn);
 	ARG_UNUSED(ctx);
+
+    uint32_t base_unit_time_received = *(uint32_t*)data;
+    uint32_t sensor_local_time_at_reception = (uint32_t) k_uptime_get(); // Capture local time immediately!
+
+    // Add this pair to our regression data.
+    // X is the Base Unit's time (received), Y is our Sensor Node's local time (at reception).
+    time_sync_add_data_point(&sensor_node_time_sync_state, base_unit_time_received, sensor_local_time_at_reception);
+
+    // Add this pair to our regression data.
+    // X is the Base Unit's time (received), Y is our Sensor Node's local time (at reception).
+    time_sync_add_data_point(&sensor_node_time_sync_state, base_unit_time_received, sensor_local_time_at_reception);
 
 	printk("%s() - Len: %d, Message: %.*s\n", __func__, len, len, (char *)data);
 }
@@ -129,6 +144,9 @@ void config_mac_addr(void) {
 
 int bluetooth_init(void) {   
     int err;
+
+    // Initialise the time syncing stuff
+    time_sync_init(&sensor_node_time_sync_state);
 
 	printk("Sample - Bluetooth Peripheral NUS\n");
 
