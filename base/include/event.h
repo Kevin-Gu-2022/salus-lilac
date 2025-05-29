@@ -12,7 +12,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/bluetooth/bluetooth.h>
-// #include <zephyr/bluetooth/services/nus.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/bluetooth/uuid.h>
@@ -36,6 +35,7 @@
 #define DEVICE_NAME_LEN		   (sizeof(DEVICE_NAME) - 1)
 #define MSGQ_SIZE              10
 #define MOBILE_CONNECT_TIMEOUT K_SECONDS(10)
+#define DISPLAY_BUFFER_SIZE 7
 
 typedef enum {
     STATE_IDLE,
@@ -58,6 +58,8 @@ typedef enum {
     EVENT_NONE,
     EVENT_PRESENCE,
     EVENT_TAMPERING,
+    EVENT_FAIL,
+    EVENT_SUCCESS
 } event_type_t;
 
 extern const char *state_names[STATE_MAX];
