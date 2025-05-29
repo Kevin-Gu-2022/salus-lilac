@@ -18,6 +18,7 @@ const char *state_names[] = {
     "MOBILE_CONNECT",
     "MOBILE_DATA",
     "MOBILE_DISCONNECT",
+    "MOBILE_DISCONNECTION",
     "TAMPERING",
     "PRESENCE",
     "FAIL",
@@ -35,6 +36,8 @@ static event_type_t current_event = EVENT_NONE;
 static int64_t current_event_time = 0;
 static char last_mag_meas[SENSOR_MEAS_LENGTH] = "N/A";
 static char last_ultra_meas[SENSOR_MEAS_LENGTH] = "N/A";
+bool mobile_reconnect = false;
+bool clear_passcode = false;
 
 // Prototypes for state handlers
 void transition_to(system_state_t next_state);
@@ -46,6 +49,7 @@ void handle_sensor_disconnect(void);
 void handle_mobile_connect(void);
 void handle_mobile_data(void);
 void handle_mobile_disconnect(void);
+void handle_mobile_disconnection(void);
 void handle_tampering(void);
 void handle_presence(void);
 void handle_fail(void);
@@ -234,7 +238,6 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     char addr[BT_ADDR_LE_STR_LEN];
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
     LOG_INF("%s disconnected.", addr);
-
     
     if (conn_connected) {
         bt_conn_unref(conn_connected);
@@ -414,6 +417,9 @@ void fsm_thread(void) {
             case STATE_MOBILE_DISCONNECT:
                 handle_mobile_disconnect();
                 break;
+            case STATE_MOBILE_DISCONNECTION:
+                handle_mobile_disconnection();
+                break;
             case STATE_TAMPERING:
                 handle_tampering();
                 break;
@@ -448,6 +454,7 @@ void transition_to(system_state_t next_state) {
 void handle_idle(void) {
     LOG_INF("Resetting system.");
     k_msleep(2500);
+    mobile_reconnect = false;
     current_event = EVENT_NONE;
     strcpy(last_ultra_meas, "N/A");
     strcpy(last_mag_meas, "N/A");
@@ -561,7 +568,9 @@ void handle_mobile_connect(void) {
         // On mobile device connect event:
         transition_to(STATE_MOBILE_DATA);
     } else {
-        if (current_event == EVENT_TAMPERING) {
+        if (mobile_reconnect) {
+            transition_to(STATE_MOBILE_DISCONNECTION);
+        } else if (current_event == EVENT_TAMPERING) {
             // If tampering detected, go to TAMPERING state
             transition_to(STATE_TAMPERING);
         } else if (current_event == EVENT_PRESENCE) {
@@ -577,6 +586,31 @@ void handle_mobile_data(void) {
 	static int passcode_attempts = 0;
     static char input_buffer[PASSCODE_LENGTH] = {0};
     static int input_index = 0;
+
+    if (clear_passcode) {
+        // Clear passcode input
+        input_index = 0;
+        memset(input_buffer, 0, sizeof(input_buffer));
+        clear_passcode = false;
+    }
+
+    if (mobile_reconnect) {
+        mobile_reconnect = false;
+        char display_buffer[DISPLAY_BUFFER_SIZE];
+        int attempts_remaining = PASSCODE_ATTEMPTS - passcode_attempts;
+        display_buffer[0] = '0' + attempts_remaining;
+        display_buffer[1] = ':';
+
+        for (int i = 0; i < PASSCODE_LENGTH - 1; ++i) {
+            if (i < input_index) {
+                display_buffer[i + 2] = input_buffer[i];
+            } else {
+                display_buffer[i + 2] = '-';
+            }
+        }
+        display_buffer[DISPLAY_BUFFER_SIZE - 1] = '\0';
+        bluetooth_write(display_buffer);
+    }
 
     char key = keypad_scan();
 
@@ -661,6 +695,7 @@ void handle_mobile_data(void) {
     // Mobile disconnected, try and reconnect
     if (k_sem_take(&mobile_reconnect_sem, K_NO_WAIT) == 0) {
         transition_to(STATE_MOBILE_CONNECT);
+        mobile_reconnect = true;
     }
 }
 
@@ -685,6 +720,13 @@ void handle_mobile_disconnect(void) {
             LOG_ERR("Unkown state.");
             break;
     }
+}
+
+// MOBILE_DISCONNECTION: If mobile disconnected after attempting passcode entry
+void handle_mobile_disconnection(void) {
+    clear_passcode = true;
+    current_event = EVENT_DISCONNECTION;
+    transition_to(STATE_BLOCKCHAIN);
 }
 
 // TAMPERING: Magnetometer signal received with no authorised connections
@@ -727,6 +769,11 @@ void handle_blockchain(void) {
         case STATE_PRESENCE:
             add_block(event_time, "PRESENCE", last_mag_meas, last_ultra_meas, "Visitor", "N/A");
             LOG_INF("Presence event added to blockchain.");
+            k_msleep(5000);
+            break;
+        case STATE_MOBILE_DISCONNECTION:
+            add_block(event_time, "DISCONNECTION", last_mag_meas, last_ultra_meas, current_user->alias, current_user->mac);
+            LOG_INF("User disconnect event added to blockchain.");
             k_msleep(5000);
             break;
 		case STATE_FAIL:

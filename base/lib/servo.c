@@ -44,7 +44,7 @@ void servo_toggle(void) {
         return;
     }
 
-    printk("Moved to %s (pulse: %d us)\n", dir == UP ? "180°" : "0°", pulse_width);
+    // printk("Moved to %s (pulse: %d us)\n", dir == UP ? "180°" : "0°", pulse_width);
 
     // Flip direction
     dir = (dir == UP) ? DOWN : UP;

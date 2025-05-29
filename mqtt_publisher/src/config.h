@@ -13,8 +13,11 @@
 // #define ZEPHYR_ADDR		"172.20.10.2"
 // #define SERVER_ADDR		"172.20.10.2"
 
-#define ZEPHYR_ADDR		"10.151.70.195"
-#define SERVER_ADDR		"10.151.70.195"
+// #define ZEPHYR_ADDR		"10.151.70.195"
+// #define SERVER_ADDR		"10.151.70.195"
+
+#define ZEPHYR_ADDR		"192.168.1.113"
+#define SERVER_ADDR		"192.168.1.113"
 
 #define SERVER_PORT		1883
 

@@ -18,6 +18,20 @@ LOG_MODULE_REGISTER(net_mqtt_publisher, LOG_LEVEL_DBG);
 #include "config.h"
 #include "net_sample_common.h"
 
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/wifi_mgmt.h>
+
+// #define MY_WIFI_SSID     "TP-LINK_E673"
+// #define MY_WIFI_PASSWORD "05393428"
+
+// #define MY_WIFI_SSID     "Starbucks Free WiFi"
+// #define MY_WIFI_PASSWORD "@starbucks-wifi"
+
+#define MY_WIFI_SSID     "VX220-0493"
+#define MY_WIFI_PASSWORD "3232A1D0E8ACE"
+
+bool wifi_connected = false;
+
 #define APP_BMEM
 #define APP_DMEM
 
@@ -143,6 +157,11 @@ void mqtt_evt_handler(struct mqtt_client *const client,
 
 	case MQTT_EVT_PINGRESP:
 		LOG_INF("PINGRESP packet");
+		break;
+
+	case MQTT_EVT_PUBLISH:
+		LOG_INF("Received PUBLISH message, ID: %d",
+	        evt->param.publish.message_id);
 		break;
 
 	default:
@@ -346,7 +365,7 @@ static int publisher(void)
 		r = 0;
 	}
 
-	rc = mqtt_disconnect(&client_ctx, NULL);
+	rc = mqtt_disconnect(&client_ctx);
 	PRINT_RESULT("mqtt_disconnect", rc);
 
 	LOG_INF("Bye!");
@@ -356,6 +375,10 @@ static int publisher(void)
 
 static int start_app(void)
 {
+	while (!wifi_connected) {
+        k_sleep(K_MSEC(100));
+    }
+
 	int r = 0, i = 0;
 
 	while (!CONFIG_NET_SAMPLE_APP_MAX_CONNECTIONS ||
@@ -386,16 +409,7 @@ K_THREAD_DEFINE(app_thread, STACK_SIZE,
 static K_HEAP_DEFINE(app_mem_pool, 1024 * 2);
 #endif
 
-#include <zephyr/net/net_if.h>
-#include <zephyr/net/wifi_mgmt.h>
 
-// #define MY_WIFI_SSID     "TP-LINK_E673"
-// #define MY_WIFI_PASSWORD "05393428"
-
-#define MY_WIFI_SSID     "Starbucks Free WiFi"
-#define MY_WIFI_PASSWORD "@starbucks-wifi"
-
-bool wifi_connected = false;
 
 static void wifi_mgmt_event_handler(struct net_mgmt_event_callback *cb,
                                     uint32_t mgmt_event, struct net_if *iface)
