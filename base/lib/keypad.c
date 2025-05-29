@@ -6,6 +6,8 @@
 
 #include "keypad.h"
 
+LOG_MODULE_REGISTER(keypad, LOG_LEVEL_DBG);
+
 #define ROW_ALIAS(i) DT_ALIAS(row##i)
 #define COL_ALIAS(i) DT_ALIAS(col##i)
 #define GPIO_SPEC(alias) GPIO_DT_SPEC_GET(alias, gpios)
@@ -36,11 +38,9 @@ static const char keymap[ROW_COUNT][COL_COUNT] = {
 static bool prev_state[ROW_COUNT][COL_COUNT] = {0};
 
 void keypad_init(void) {
-    printk("Initializing keypad...\n");
-
     for (int i = 0; i < ROW_COUNT; i++) {
         if (!device_is_ready(rows[i].port)) {
-            printk("Row %d not ready\n", i);
+            LOG_ERR("Row %d not ready", i);
             return;
         }
         gpio_pin_configure_dt(&rows[i], GPIO_OUTPUT_INACTIVE);
@@ -49,11 +49,13 @@ void keypad_init(void) {
 
     for (int i = 0; i < COL_COUNT; i++) {
         if (!device_is_ready(cols[i].port)) {
-            printk("Col %d not ready\n", i);
+            LOG_ERR("Col %d not ready", i);
             return;
         }
         gpio_pin_configure_dt(&cols[i], GPIO_INPUT | GPIO_PULL_UP);
     }
+
+    LOG_INF("Keypad initialised.");
 }
 
 // Returns pressed key char if new key pressed, else '\0'

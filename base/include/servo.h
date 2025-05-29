@@ -11,6 +11,7 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/logging/log.h>
 
 extern void servo_init(void);
 extern void servo_toggle(void);

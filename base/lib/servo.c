@@ -6,6 +6,8 @@
 
 #include "servo.h"
 
+LOG_MODULE_REGISTER(servo, LOG_LEVEL_DBG);
+
 // Servo device and pulse width limits from Devicetree
 static const struct pwm_dt_spec servo = PWM_DT_SPEC_GET(DT_NODELABEL(servo));
 static const uint32_t min_pulse = DT_PROP(DT_NODELABEL(servo), min_pulse);
@@ -21,12 +23,12 @@ enum direction {
 static enum direction dir = UP;
 
 void servo_init(void) {
-	printk("Servomotor control\n");
-
 	if (!pwm_is_ready_dt(&servo)) {
-		printk("Error: PWM device %s is not ready\n", servo.dev->name);
+		LOG_ERR("Error: PWM device %s is not ready", servo.dev->name);
 		return;
 	}
+
+    LOG_INF("Servomotor initialised.");
 
 	// Initialize to 0°
     pwm_set_pulse_dt(&servo, max_pulse);
@@ -40,12 +42,9 @@ void servo_toggle(void) {
 
     int ret = pwm_set_pulse_dt(&servo, pulse_width);
     if (ret < 0) {
-        printk("Error %d: failed to set pulse width\n", ret);
+        LOG_ERR("Error %d: failed to set pulse width", ret);
         return;
     }
-
-    // printk("Moved to %s (pulse: %d us)\n", dir == UP ? "180°" : "0°", pulse_width);
-
     // Flip direction
     dir = (dir == UP) ? DOWN : UP;
 }
