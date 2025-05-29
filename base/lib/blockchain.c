@@ -6,6 +6,7 @@
 #include <zephyr/logging/log.h>
 #include <mbedtls/sha256.h>
 #include <zephyr/fs/fs.h>
+#include "SEGGER_RTT.h"
 #include "fs.h"
 #include "blockchain.h"
 
@@ -116,6 +117,9 @@ void add_block(const char *timestamp, const char *event, const char *mag_meas, c
         if (line) {
             fs_write(&file, line, strlen(line));
             fs_write(&file, "\n", 1);
+
+            SEGGER_RTT_Write(0, line, strlen(line));
+            SEGGER_RTT_Write(0, "\n", 2);
         } else {
             printk("Failed to serialize block to JSON\n");
         }

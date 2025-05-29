@@ -10,6 +10,7 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/shell/shell.h>
 #include <stdlib.h>
+#include "SEGGER_RTT.h"
 #include "user.h"
 #include "fs.h"
 #include "event.h"
@@ -128,6 +129,7 @@ int main(void) {
     user_init();
     sensor_threshold_init();
     fs_init();
+    SEGGER_RTT_Init();
     servo_init();
     keypad_init();
     bluetooth_init();
