@@ -35,9 +35,12 @@
 #define DEVICE_NAME_LEN		   (sizeof(DEVICE_NAME) - 1)
 #define MSGQ_SIZE              10
 #define MOBILE_CONNECT_TIMEOUT K_SECONDS(10)
-#define DISPLAY_BUFFER_SIZE 7
-#define SENSOR_MEAS_LENGTH 10
-#define SENSOR_SYNC_ATTEMPTS 10
+#define DISPLAY_BUFFER_SIZE    7
+#define SENSOR_MEAS_LENGTH     10
+#define SENSOR_SYNC_ATTEMPTS   10
+#define MIN_RSSI               -70
+#define TARGET_HANDLE          0x0015
+#define MAX_NOTIFY_LEN         64
 
 typedef enum {
     STATE_IDLE,

@@ -6,6 +6,8 @@
 
 #include "event.h"
 
+LOG_MODULE_REGISTER(base, LOG_LEVEL_DBG);
+
 // State names for logging/debugging
 const char *state_names[] = {
     "IDLE",
@@ -50,13 +52,6 @@ void handle_fail(void);
 void handle_success(void);
 void handle_blockchain(void);
 
-
-#define MIN_RSSI      -70
-#define TARGET_HANDLE 0x0015
-
-#define MAX_NOTIFY_LEN 64
-
-
 // Define message queues.
 K_MSGQ_DEFINE(mobile_mac_msgq, MAC_ADDRESS_LENGTH, MSGQ_SIZE, 4);
 K_MSGQ_DEFINE(sensor_msgq, MAX_NOTIFY_LEN, MSGQ_SIZE, 4);
@@ -93,7 +88,6 @@ bool is_mac_allowed(const bt_addr_le_t *addr, char *out_mac, size_t out_mac_len)
         if (strcmp(user->mac, addr_str) == 0) {
             if (user == last_failed_user) {
                 // If this user was the last failed attempt, ignore them
-                printk("Ignoring last failed user: %s\n", user->alias);
                 return false;
             }
             
@@ -109,7 +103,7 @@ bool is_mac_allowed(const bt_addr_le_t *addr, char *out_mac, size_t out_mac_len)
 
 static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params *params, const void *data, uint16_t length) {
 	if (!data) {
-		printk("[UNSUBSCRIBED]\n");
+		// LOG_ERR("[UNSUBSCRIBED]");
 		params->value_handle = 0U;
 		return BT_GATT_ITER_STOP;
 	}
@@ -118,9 +112,7 @@ static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params
 	uint16_t copy_len = length < (MAX_NOTIFY_LEN - 1) ? length : (MAX_NOTIFY_LEN - 1);
 	char last_notify_string[MAX_NOTIFY_LEN];
     memcpy(last_notify_string, data, copy_len);
-	last_notify_string[copy_len] = '\0';  // Null-terminate
-
-	// printk("[NOTIFICATION STORED] %s\n", last_notify_string);
+	last_notify_string[copy_len] = '\0';
 
     int ret;
 
@@ -128,14 +120,14 @@ static uint8_t notify_func(struct bt_conn *conn, struct bt_gatt_subscribe_params
         if (bt_addr_le_cmp(bt_conn_get_dst(conn), &sensor_mac) == 0) {
             ret = k_msgq_put(&sensor_msgq, last_notify_string, K_NO_WAIT);
             if (ret != 0) {
-                printk("Failed to enqueue sensor notification (err %d)\n", ret);
+                LOG_ERR("Failed to enqueue sensor notification (err %d)", ret);
             }
         }
     } else if (current_state == STATE_MOBILE_DATA) {
         if (bt_addr_le_cmp(bt_conn_get_dst(conn), &sensor_mac) != 0) {
             ret = k_msgq_put(&mobile_msgq, last_notify_string, K_NO_WAIT);
             if (ret != 0) {
-                printk("Failed to enqueue mobile notification (err %d)\n", ret);
+                LOG_ERR("Failed to enqueue mobile notification (err %d)", ret);
             }
         }
     }
@@ -160,13 +152,13 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type, st
         if (bt_addr_le_cmp(addr, &sensor_mac) == 0) {
             err = bt_le_scan_stop();
             if (err) {
-                printk("Scan stop failed (err %d)\n", err);
+                LOG_ERR("Scan stop failed (err %d)", err);
                 return;
             }
 
             err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
             if (err) {
-                printk("Create connection failed (err %d)\n", err);
+                LOG_ERR("Create connection failed (err %d)", err);
                 start_scan_func();
             } else {
                 bt_conn_unref(conn);  // Reference passed to callbacks
@@ -176,13 +168,13 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type, st
         if (is_mac_allowed(addr, dev, sizeof(dev))) {            
             err = bt_le_scan_stop();
             if (err) {
-                printk("Scan stop failed (err %d)\n", err);
+                LOG_ERR("Scan stop failed (err %d)", err);
                 return;
             }
 
             err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &conn);
             if (err) {
-                printk("Create connection failed (err %d)\n", err);
+                LOG_ERR("Create connection failed (err %d)", err);
                 start_scan_func();
             } else {
                 bt_conn_unref(conn);  // Reference passed to callbacks
@@ -195,9 +187,9 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type, st
 static void start_scan(void) {
     int err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, device_found);
     if (err) {
-        printk("Scan start failed (err %d)\n", err);
+        LOG_ERR("Scan start failed (err %d)", err);
     } else {
-        printk("Scanning...\n");
+        // LOG_INF("Scanning...");
     }
 }
 
@@ -207,12 +199,12 @@ static void connected(struct bt_conn *conn, uint8_t err) {
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 
     if (err) {
-        printk("[FAIL] Connect to %s (err %u)\n", addr, err);
+        LOG_ERR("Connect to %s failed (err %u)", addr, err);
         start_scan_func();
         return;
     }
 
-    printk("[OK] Connected: %s\n", addr);
+    LOG_INF("Connected device: %s", addr);
     conn_connected = bt_conn_ref(conn);
 
 	if (conn == conn_connected) {
@@ -223,9 +215,9 @@ static void connected(struct bt_conn *conn, uint8_t err) {
 
 		int err = bt_gatt_subscribe(conn, &subscribe_params);
 		if (err && err != -EALREADY) {
-			printk("Subscribe failed (err %d)\n", err);
+			LOG_ERR("Subscribe failed (err %d)", err);
 		} else {
-			printk("[SUBSCRIBED to 0x0012]\n");
+			// LOG_INF("[SUBSCRIBED to 0x0012]");
 
             if (bt_addr_le_cmp(bt_conn_get_dst(conn), &sensor_mac) == 0) {
                 // Sensor connected, signal semaphore
@@ -241,8 +233,9 @@ static void connected(struct bt_conn *conn, uint8_t err) {
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
     char addr[BT_ADDR_LE_STR_LEN];
     bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-    printk("[DISC] %s (reason %u)\n", addr, reason);
+    LOG_INF("%s disconnected.", addr);
 
+    
     if (conn_connected) {
         bt_conn_unref(conn_connected);
         conn_connected = NULL;
@@ -257,7 +250,6 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     } else if (current_state == STATE_MOBILE_DATA) {
         k_sem_give(&mobile_reconnect_sem);
     }
-    // start_scan_func();
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
@@ -292,7 +284,7 @@ void config_mac_addr(void) {
 
     err = bt_id_create(&device_address, NULL);
     if (err < 0) {
-        printk("Failed to create custom identity (err %d)\n", err);
+        LOG_ERR("Failed to create custom identity (err %d)", err);
     }
 }
 
@@ -308,9 +300,9 @@ void bluetooth_write(const char *string) {
 			int err = write_cmd(conn, string);
 			bt_conn_unref(conn);
 			if (err) {
-				printk("Write failed (err %d)\n", err);
+				LOG_ERR("Write failed (err %d)", err);
 			} else {
-				printk("Write successful\n");
+				// LOG_INF("Write successful");
 			}
 		}
 	}
@@ -323,9 +315,9 @@ void bluetooth_write_int(uint64_t *data) {
 			int err = write_int(conn, data);
 			bt_conn_unref(conn);
 			if (err) {
-				printk("Write failed (err %d)\n", err);
+				LOG_ERR("Write failed (err %d)", err);
 			} else {
-				printk("Write successful\n");
+				// LOG_INF("Write successful");
 			}
 		}
 	}
@@ -335,9 +327,9 @@ void bluetooth_disconnect(void) {
     if (conn_connected) {
         int err = bt_conn_disconnect(conn_connected, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
         if (err) {
-            printk("Disconnection failed (err %d)\n", err);
+            LOG_ERR("Disconnection failed (err %d)", err);
         } else {
-            printk("Disconnection initiated.\n");
+            // LOG_INF("Disconnection initiated.");
         }
     }
 }
@@ -346,10 +338,10 @@ void bluetooth_init(void) {
 	config_mac_addr();
     int err = bt_enable(NULL);
     if (err) {
-        printk("Bluetooth enable failed (err %d)\n", err);
+        LOG_ERR("Bluetooth enable failed (err %d)", err);
         return;
     }
-    printk("Bluetooth initialized\n");	
+    LOG_INF("Bluetooth initialised");	
 }
 
 int magnetometer_event(const char *data_str) {
@@ -367,8 +359,6 @@ int magnetometer_event(const char *data_str) {
     double diff_sq = fabs(mag_sq - MAG_BASELINE_SQ);
 
     snprintf(last_mag_meas, sizeof(last_mag_meas), "%.3f", diff_sq);
-
-    // printk("diff_sq: %.3f, threshold: %.3f\n", diff_sq, sensor_get_magnetometer_threshold());
 
     if (diff_sq > sensor_get_magnetometer_threshold()) {
         // Significant change detected
@@ -440,12 +430,10 @@ void fsm_thread(void) {
                 handle_blockchain();
                 break;
             default:
-                printk("Invalid state: %d\n", current_state);
+                LOG_ERR("Invalid state: %d", current_state);
                 current_state = STATE_FAIL;
                 break;
         }
-
-		// printk("Current state: %s\n", state_names[current_state]);
 		k_msleep(100);
 	}
 }
@@ -458,7 +446,7 @@ void transition_to(system_state_t next_state) {
 
 // IDLE: Starting state
 void handle_idle(void) {
-    printk("State: IDLE\n");
+    LOG_INF("Resetting system.");
     k_msleep(2500);
     current_event = EVENT_NONE;
     strcpy(last_ultra_meas, "N/A");
@@ -468,19 +456,18 @@ void handle_idle(void) {
 
 // SENSOR_CONNECT: Scan and connect to the sensor board
 void handle_sensor_connect(void) {
-    printk("State: SENSOR_CONNECT\n");
+    LOG_INF("Trying to connect to sensors...");
 
     bluetooth_scan();
 
     k_sem_take(&sensor_connect_sem, K_FOREVER);
 
     transition_to(STATE_SENSOR_SYNC);
+    LOG_INF("Sensors found! Sychronising time...");
 }
 
 // SENSOR_SYNC: Synchronise time between sensor and base nodes
 void handle_sensor_sync(void) {
-    printk("State: SENSOR_SYNC\n");
-
     static int sync_attempts = 0;    
 
     // Send the current time across
@@ -489,15 +476,13 @@ void handle_sensor_sync(void) {
     sync_attempts++;
 
     if (sync_attempts >= SENSOR_SYNC_ATTEMPTS) {
+        LOG_INF("Sensor time sychronised!");
         transition_to(STATE_SENSOR_DATA);
     }
 }
 
-
 // SENSOR_DATA: Receive/process sensor data
 void handle_sensor_data(void) {
-    // printk("State: SENSOR_DATA\n");
-
     char notify_buffer[MAX_NOTIFY_LEN];
 
     if (k_msgq_get(&sensor_msgq, notify_buffer, K_NO_WAIT) == 0) {
@@ -510,9 +495,8 @@ void handle_sensor_data(void) {
         }
         if (comma_count == 2) {
             // Magnetometer data
-            printk("Received Magnetometer data\n");
             if (magnetometer_event(notify_buffer)) {
-                printk("Tampering detected!\n");
+                LOG_INF("Tampering detected!");
                 current_event = EVENT_TAMPERING;
                 current_event_time = k_uptime_get() / 1000;
                 transition_to(STATE_SENSOR_DISCONNECT);
@@ -520,9 +504,8 @@ void handle_sensor_data(void) {
             }
         } else if (comma_count == 0) {
             // Ultrasonic data
-            printk("Received Ultrasonic data\n");
             if (ultrasonic_event(notify_buffer)) {
-                printk("Presence detected!\n");
+                LOG_INF("Presence detected!");
                 current_event = EVENT_PRESENCE;
                 current_event_time = k_uptime_get() / 1000;
                 transition_to(STATE_SENSOR_DISCONNECT);
@@ -533,14 +516,13 @@ void handle_sensor_data(void) {
 
     // Sensor disconnected, try and reconnect
     if (k_sem_take(&sensor_reconnect_sem, K_NO_WAIT) == 0) {
+        LOG_INF("Sensors disconnected, attempting reconnect...");
         transition_to(STATE_SENSOR_CONNECT);
     }
 }
 
 // SENSOR_DISCONNECT: Disconnect and prepare for mobile connect
 void handle_sensor_disconnect(void) {
-    printk("State: SENSOR_DISCONNECT\n");
-
     bluetooth_disconnect();
 
     k_sem_take(&sensor_disconnect_sem, K_FOREVER);
@@ -552,7 +534,7 @@ void handle_sensor_disconnect(void) {
 
 // MOBILE_CONNECT: Scan and connect to mobile devices (allowed MACs)
 void handle_mobile_connect(void) {
-    printk("State: MOBILE_CONNECT\n");
+    LOG_INF("Searching for authorised users...");
 
     bluetooth_scan();
 
@@ -574,7 +556,7 @@ void handle_mobile_connect(void) {
             k_mutex_unlock(&user_config_list_mutex);
         }
 
-        printk("%s is connected!\n", current_user->alias);
+        LOG_INF("%s is connected! Please enter your passcode.", current_user->alias);
 
         // On mobile device connect event:
         transition_to(STATE_MOBILE_DATA);
@@ -591,8 +573,6 @@ void handle_mobile_connect(void) {
 
 // MOBILE_DATA: Communicate with mobile device
 void handle_mobile_data(void) {
-    // printk("State: MOBILE_DATA\n");
-
     // Track the number of passcode attempts
 	static int passcode_attempts = 0;
     static char input_buffer[PASSCODE_LENGTH] = {0};
@@ -624,7 +604,7 @@ void handle_mobile_data(void) {
             }
 
             if (strncmp(input_buffer, current_user->passcode, PASSCODE_LENGTH - 1) == 0) {
-                printk("Correct! Welcome %s!\n", current_user->alias);
+                LOG_INF("Passcode correct! Welcome %s!", current_user->alias);
                 bluetooth_write("-:----");
                 current_event = EVENT_SUCCESS;
                 current_event_time = k_uptime_get() / 1000;
@@ -639,7 +619,7 @@ void handle_mobile_data(void) {
             } else {
                 passcode_attempts++;
                 if (passcode_attempts >= PASSCODE_ATTEMPTS) {
-                    printk("%s has been temporarily locked out.\n", current_user->alias);
+                    LOG_INF("%s has been temporarily locked out. Please seek assistance.", current_user->alias);
                     bluetooth_write("-:----");
                     current_event = EVENT_FAIL;
                     current_event_time = k_uptime_get() / 1000;
@@ -652,7 +632,7 @@ void handle_mobile_data(void) {
                     transition_to(STATE_MOBILE_DISCONNECT);
                     return;
                 } else {
-                    printk("Incorrect! Please try again %s.\n", current_user->alias);
+                    LOG_INF("Passcode incorrect! Please try again %s.", current_user->alias);
                     bluetooth_write("N");
                 }
             }
@@ -675,7 +655,6 @@ void handle_mobile_data(void) {
             }
         }
         display_buffer[DISPLAY_BUFFER_SIZE - 1] = '\0';
-        printk("Sending: %s\n", display_buffer);
         bluetooth_write(display_buffer);
     }
 
@@ -687,8 +666,6 @@ void handle_mobile_data(void) {
 
 // MOBILE_DISCONNECT: Disconnect mobile and go idle
 void handle_mobile_disconnect(void) {
-    printk("State: MOBILE_DISCONNECT\n");
-
     k_msleep(5000);
 
     bluetooth_disconnect();
@@ -705,60 +682,38 @@ void handle_mobile_disconnect(void) {
             transition_to(STATE_SUCCESS);
             break;
         default:
-            printk("Unkown state.\n");
+            LOG_ERR("Unkown state.");
             break;
     }
 }
 
 // TAMPERING: Magnetometer signal received with no authorised connections
 void handle_tampering(void) {
-    printk("State: TAMPERING\n");
-
-    k_msleep(5000);
-    
-	// Signal to speaker and camera over MQTT
-	// TODO
-
     transition_to(STATE_BLOCKCHAIN);
 }
 
 // PRESENCE: No authorised connections and no tampering detections
 void handle_presence(void) {
-    printk("State: PRESENCE\n");
-
-    // Signal to speaker and camera over MQTT
-	// TODO
-    k_msleep(5000);
-
     transition_to(STATE_BLOCKCHAIN);
 }
 
 // FAIL: Incorrect passcode and attempt limit was reached
 void handle_fail(void) {
-    printk("State: FAIL\n");
     last_failed_user = current_user;
-
-    // Signal to speaker and camera over MQTT
-	// TODO
-
     transition_to(STATE_BLOCKCHAIN);
 }
 
 // FAIL: Correct passcode within attempt limit
 void handle_success(void) {
-    printk("State: SUCCESS\n");
+    LOG_INF("Unlocking door!");
     servo_toggle();
     last_failed_user = NULL;
-
     k_msleep(2000);
-
     transition_to(STATE_BLOCKCHAIN);
 }
 
 // FAIL: Appends the event to the blockchain
 void handle_blockchain(void) {
-    printk("State: BLOCKCHAIN\n");
-
     char event_time[16];
     snprintf(event_time, sizeof(event_time), "%lld", current_event_time);
     
@@ -766,27 +721,28 @@ void handle_blockchain(void) {
 	switch (previous_state) {
         case STATE_TAMPERING:
             add_block(event_time, "TAMPERING", last_mag_meas, last_ultra_meas, "Intruder", "N/A");
-            printk("BLOCKCHAIN: TAMPERING event recorded.\n");
+            LOG_INF("Tampering event added to blockchain.");
             k_msleep(5000);
             break;
         case STATE_PRESENCE:
             add_block(event_time, "PRESENCE", last_mag_meas, last_ultra_meas, "Visitor", "N/A");
-            printk("BLOCKCHAIN: PRESENCE event recorded.\n");
+            LOG_INF("Presence event added to blockchain.");
             k_msleep(5000);
             break;
 		case STATE_FAIL:
             add_block(event_time, "FAIL", last_mag_meas, last_ultra_meas, current_user->alias, current_user->mac);
-            printk("BLOCKCHAIN: FAIL event recorded.\n");
+            LOG_INF("Fail event added to blockchain.");
             k_msleep(5000);
             break;
 		case STATE_SUCCESS:
             add_block(event_time, "SUCCESS", last_mag_meas, last_ultra_meas, current_user->alias, current_user->mac);
-            printk("BLOCKCHAIN: SUCCESS event recorded.\n");
+            LOG_INF("Success event added to blockchain.");
             k_msleep(5000);
+            LOG_INF("Locking door!");
             servo_toggle();
             break;
         default:
-            printk("BLOCKCHAIN: Unknown event.\n");
+            LOG_ERR("BLOCKCHAIN: Unknown event.");
             break;
     }
 
