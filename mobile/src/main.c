@@ -49,6 +49,10 @@ K_MSGQ_DEFINE(data_msgq, MAX_NAME_LEN, MSGQ_SIZE, 4);
 K_SEM_DEFINE(conn_status_sem, 0, 1);
 bool is_connected = false;
 
+static const bt_addr_t target_mac = {
+    .val = { 0x01, 0xEF, 0xBE, 0x00, 0xAD, 0xDE }
+};
+
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
 	BT_DATA(BT_DATA_NAME_COMPLETE, DEVICE_NAME, DEVICE_NAME_LEN),
@@ -83,11 +87,20 @@ static void received(struct bt_conn *conn, const void *data, uint16_t len, void 
 static void connected(struct bt_conn *conn, uint8_t err) {
     if (err) {
         printk("Connection failed (err %u)\n", err);
-    } else {
+    }
+
+    const bt_addr_le_t *conn_addr = bt_conn_get_dst(conn);
+    char addr_str[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(conn_addr, addr_str, sizeof(addr_str));
+
+    if (bt_addr_cmp(&conn_addr->a, &target_mac) == 0) {
         printk("Connected\n");
         is_connected = true;
         k_sem_give(&conn_status_sem);
-    }
+    } else {
+        printk("Unauthorised MAC: %s - Disconnecting\n", addr_str);
+        bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    }    
 }
 
 void adv_restart_fn(struct k_work *work) {
@@ -210,7 +223,7 @@ void config_labels(void) {
     third_digit = lv_label_create(lv_scr_act());
     fourth_digit = lv_label_create(lv_scr_act());
 
-    lv_obj_set_pos(num_attempts, 190, 25);
+    lv_obj_set_pos(num_attempts, 190, 20);
     lv_obj_set_pos(first_digit, 55, 160);
     lv_obj_set_pos(second_digit, 120, 160);
     lv_obj_set_pos(third_digit, 180, 160);
