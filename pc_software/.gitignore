@@ -1,2 +1,4 @@
 yolov8n.pt
 .env
+*.jpg
+*.jpeg

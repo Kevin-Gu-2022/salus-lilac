@@ -14,7 +14,7 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 
 # Assuming send_file.py exists and send_image is callable
-from send_file import send_image
+from send_file import send_image, send_status
 
 # Configure serial port
 try:
@@ -65,7 +65,7 @@ def parse_json_from_line(line: str):
     # Regex to find a JSON object or array at any position
     # This pattern looks for the first occurrence of '{...}' or '[...]'
     # It's a simplified regex and might need refinement for very complex/nested JSON scenarios
-    json_match = re.search(r'(\{.*\}|\[.*\])', line)
+    json_match = re.search(r'(\{.*\})', line)
     if json_match:
         json_str = json_match.group(0)
         try:
@@ -151,11 +151,8 @@ class RTTShellReader(QThread):
                     line = file.readline()
                     if not line:
                         # No new line, wait a bit
-                        time.sleep(0.1)
+                        time.sleep(0.05)
                         continue
-
-                    # Emit the raw line for display in the shell output (optional)
-                    # self.log_line_received.emit(line.strip())
 
                     # Attempt to parse JSON from the line
                     parsed_data = parse_json_from_line(line.strip())
@@ -297,14 +294,24 @@ class SensorGUI(QWidget):
     def send_file_to_dashboard(self, file_path: str):
         """
         Sends the specified image file to the dashboard.
-        Note: The original code passed a hardcoded "bounding_boxed.jpg".
-        This is updated to use the selected file_path.
         """
         print(f"send_file_to_dashboard() called with path: {file_path}")
-        # Assuming send_image function handles the actual sending logic
         try:
             run_python_recognition(file_path)
-            send_image("bounding_boxed.jpg")
+
+            # Find the highest index
+            folder = "out"
+            pattern = re.compile(r"bounded_(\d+)\.jpg")
+
+            max_num = -1
+            for filename in os.listdir(folder):
+                match = pattern.match(filename)
+                if match:
+                    num = int(match.group(1))
+                    if num > max_num:
+                        max_num = num
+
+            send_image(f"out/bounded_{max_num}.jpg")
             self.show_message_box("Success", f"File '{os.path.basename(file_path)}' sent to dashboard.")
         except Exception as e:
             self.show_message_box("Error", f"Failed to send file: {e}")
@@ -342,10 +349,7 @@ class SensorGUI(QWidget):
 
     def handle_rtt_json(self, data: dict):
         """
-        Slot to handle parsed JSON data received from the RTT log.
-        This is where you'd process the JSON data (e.g., update sensor readings,
-        display location data, etc.).
-        For demonstration, it appends the JSON to the shell output.
+        Slot to send parsed JSON data received from the RTT log to the TagoIO dashboard.
         """
         # Append the parsed JSON in a distinct color for easy identification
         json_pretty = json.dumps(data, indent=2)
@@ -354,11 +358,8 @@ class SensorGUI(QWidget):
         self.shell_output.append(f"<span style='color:#800080;'>--- RTT JSON END ---</span>")
         self.shell_output.verticalScrollBar().setValue(self.shell_output.verticalScrollBar().maximum())
 
-        # Here you would typically extract specific values from 'data'
-        # For example, if your JSON is {"loc_x": 100, "loc_y": 200}:
-        # if "loc_x" in data and "loc_y" in data:
-        #     self.update_location_display(data["loc_x"], data["loc_y"])
-        # print(f"Received JSON from RTT: {data}")
+        # Send to dashboard
+        send_status(data)
 
 
     def show_message_box(self, title: str, message: str):

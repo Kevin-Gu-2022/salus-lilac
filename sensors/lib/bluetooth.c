@@ -117,7 +117,7 @@ void bluetooth_write(const char *msg, size_t len) {
     int err;
 
     if (!conn_connected) {
-        printk("No connection available to send\n");
+        // printk("No connection available to send\n");
         return;
     }
 

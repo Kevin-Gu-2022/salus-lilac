@@ -1,12 +1,19 @@
 """
-A short script to detect objects using YOLOv8ls
+A short script to detect objects using YOLOv8.
+
+Takes one command line argument - the file path to image to perform recognition.
 
 """
 from ultralytics import YOLO
 import cv2
 import sys
+import os
 
 def detect_objects(image_path):
+    """
+    Takes an image and performs recognition using the YOLOv8 model. Draws the
+    bounding boxes and saves as "bounding_boxed.jpeg".
+    """
     # Saves a model called yolov8n.pt
     model = YOLO("yolov8n.pt")
     model.fuse()  # Make faster
@@ -31,8 +38,14 @@ def detect_objects(image_path):
         cv2.putText(results[0].orig_img, label, (x1, y - 5),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
+    #  Save the image to out directory
+    i = 0
+    while os.path.exists(f"out/bounded_{i}.jpg"):
+        i += 1
+
+    filename = f"out/bounded_{i}.jpg"
     # Save only once after drawing all boxes
-    cv2.imwrite("bounding_boxed.jpg", results[0].orig_img)
+    cv2.imwrite(filename, results[0].orig_img)
 
 
 if __name__ == "__main__":

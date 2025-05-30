@@ -56,7 +56,7 @@ void magnetometer_measure(const struct device *dev) {
     snprintf(msg_buf, sizeof(msg_buf), "%.3f,%.3f,%.3f", x, y, z);
 
     bluetooth_write(msg_buf, strlen(msg_buf));
-    printk("%s\n", msg_buf);
+    // printk("%s\n", msg_buf);
 }
 
 void ultrasonic_measure(const struct device *dev) {
@@ -78,7 +78,7 @@ void ultrasonic_measure(const struct device *dev) {
             char msg_buf[30];
             snprintf(msg_buf, sizeof(msg_buf), "%d.%03d", integer_part, fractional_part);
             bluetooth_write(msg_buf, strlen(msg_buf));
-            printk("%s\n", msg_buf);
+            // printk("%s\n", msg_buf);
             break;
         case -EIO:
             printk("Could not read from ultrasonic device\n");
