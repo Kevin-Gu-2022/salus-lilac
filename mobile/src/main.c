@@ -14,12 +14,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <lvgl.h>
-#include "unlock_img.c"
 #include "lock_img.c"
 #include "bluetooth_img.c"
 #include "attempts_img.c"
 #include "warning_img.c"
 #include "enter_img.c"
+#include "pass_img.c"
 #include "dashline_img.c"
 
 LOG_MODULE_REGISTER(mobile);
@@ -32,15 +32,22 @@ void show_incorrect_passcode_img(void);
 #define DEVICE_NAME		    CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_LEN		(sizeof(DEVICE_NAME) - 1)
 
-static uint32_t count = 0;
 static lv_obj_t *lock_imgage;
-static lv_obj_t *unlock_imgage;
-// static lv_obj_t *ble_imgage;
-// static lv_obj_t *attempts_text;
-
-struct bt_conn *conn_connected = NULL;
+static lv_obj_t *ble_imgage;
+static lv_obj_t *enter_text;
+static lv_obj_t *attempts_text;
+static lv_obj_t *dashline;
+static lv_obj_t *warning;
+static lv_obj_t *pass;
+static lv_obj_t *num_attempts;
+static lv_obj_t *first_digit;
+static lv_obj_t *second_digit;
+static lv_obj_t *third_digit;
+static lv_obj_t *fourth_digit;
 
 K_MSGQ_DEFINE(data_msgq, MAX_NAME_LEN, MSGQ_SIZE, 4);
+K_SEM_DEFINE(conn_status_sem, 0, 1);
+bool is_connected = false;
 
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
@@ -63,8 +70,6 @@ static void received(struct bt_conn *conn, const void *data, uint16_t len, void 
 	ARG_UNUSED(conn);
 	ARG_UNUSED(ctx);
 
-	// printk("%s() - Len: %d, Message: %.*s\n", __func__, len, len, (char *)data);
-
     if (len > 0 && len < MAX_NAME_LEN) {
         char received[MAX_NAME_LEN] = {0};
         memcpy(received, data, len);
@@ -78,6 +83,8 @@ static void connected(struct bt_conn *conn, uint8_t err) {
         printk("Connection failed (err %u)\n", err);
     } else {
         printk("Connected\n");
+        is_connected = true;
+        k_sem_give(&conn_status_sem);
     }
 }
 
@@ -92,6 +99,8 @@ void adv_restart_fn(struct k_work *work) {
 
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
     printk("Disconnected (reason %u)\n", reason);
+    is_connected = false;
+    k_sem_give(&conn_status_sem);
     k_work_schedule(&adv_restart_work, K_MSEC(500));
 }
 
@@ -133,20 +142,6 @@ int set_up_ble(void) {
     return 0;
 }
 
-void bluetooth_write(const char *msg, size_t len) {
-    int err;
-
-    if (!conn_connected) {
-        // printk("No connection available to send\n");
-        return;
-    }
-
-    err = bt_nus_send(conn_connected, (const uint8_t *)msg, len);
-    if (err) {
-        printk("Failed to send NUS data (err %d)\n", err);
-    }
-}
-
 static void hide_image_cb(lv_timer_t *timer) {
     lv_obj_t *img = (lv_obj_t *)lv_timer_get_user_data(timer);
     lv_obj_add_flag(img, LV_OBJ_FLAG_HIDDEN);  // hide iamge
@@ -158,27 +153,6 @@ void show_incorrect_passcode_img(void) {
     lv_timer_t *timer = lv_timer_create(hide_image_cb, 1500, lock_imgage);
     lv_timer_set_repeat_count(timer, 1);
 }
-
-// void init_images(void) {
-
-//     ble_imgage = lv_img_create(lv_scr_act());
-//     lv_img_set_src(ble_imgage, &bluetooth_img);  
-//     lv_obj_set_pos(ble_imgage, 270, 10);
-
-//     // attempts_text = lv_img_create(lv_scr_act());
-//     // lv_img_set_src(ble_imgage, &bluetooth_img);  
-//     // lv_obj_set_pos(ble_imgage, 270, 10);
-
-//     unlock_imgage = lv_img_create(lv_scr_act());
-//     lv_img_set_src(unlock_imgage, &unlock_img);  
-//     lv_obj_set_pos(unlock_imgage, 230, 10);
-//     lv_obj_add_flag(lock_imgage, LV_OBJ_FLAG_HIDDEN);
-
-//     lock_imgage = lv_img_create(lv_scr_act());
-//     lv_img_set_src(lock_imgage, &lock_img);  
-//     lv_obj_set_pos(lock_imgage, 230, 10);
-//     lv_obj_add_flag(lock_imgage, LV_OBJ_FLAG_HIDDEN);
-// }
 
 void init_interface_thread(void *, void *, void *) {
 
@@ -197,86 +171,117 @@ void init_interface_thread(void *, void *, void *) {
     }
 }
 
-void update_interface_thread(void *, void *, void *) {
-
-    lv_obj_t *ble_imgage = lv_img_create(lv_scr_act());
+void config_images(void) {
+    ble_imgage = lv_img_create(lv_scr_act());
     lv_img_set_src(ble_imgage, &bluetooth_img);  
     lv_obj_set_pos(ble_imgage, 270, 10);
 
-    lv_obj_t *attempts_text = lv_img_create(lv_scr_act());
+    attempts_text = lv_img_create(lv_scr_act());
     lv_img_set_src(attempts_text, &attempts_img);  
-    lv_obj_set_pos(attempts_text, 5, 5);
+    lv_obj_set_pos(attempts_text, 5, 4);
 
-    lv_obj_t *enter_text = lv_img_create(lv_scr_act());
+    enter_text = lv_img_create(lv_scr_act());
     lv_img_set_src(enter_text, &enter_img);  
-    lv_obj_set_pos(enter_text, 5, 100);
+    lv_obj_set_pos(enter_text, 77, 80);
 
-    lv_obj_t *dashline = lv_img_create(lv_scr_act());
+    dashline = lv_img_create(lv_scr_act());
     lv_img_set_src(dashline, &dashline_img);  
-    lv_obj_set_pos(dashline, 5, 170);
+    lv_obj_set_pos(dashline, 40, 190);
 
-    lv_obj_t *warning = lv_img_create(lv_scr_act());
+    warning = lv_img_create(lv_scr_act());
     lv_img_set_src(warning, &warning_img);  
     lv_obj_set_pos(warning, 65, 25);
-    lv_obj_add_flag(warning, LV_OBJ_FLAG_HIDDEN);
 
-    unlock_imgage = lv_img_create(lv_scr_act());
-    lv_img_set_src(unlock_imgage, &unlock_img);  
-    lv_obj_set_pos(unlock_imgage, 230, 10);
-    lv_obj_add_flag(unlock_imgage, LV_OBJ_FLAG_HIDDEN);
+    pass = lv_img_create(lv_scr_act());
+    lv_img_set_src(pass, &pass_img);  
+    lv_obj_set_pos(pass, 5, 10);
 
     lock_imgage = lv_img_create(lv_scr_act());
     lv_img_set_src(lock_imgage, &lock_img);  
     lv_obj_set_pos(lock_imgage, 230, 10);
-    lv_obj_add_flag(lock_imgage, LV_OBJ_FLAG_HIDDEN);
+}
 
-    char received[MAX_NAME_LEN] = {0};
-
-    lv_obj_t *num_attempts = lv_label_create(lv_scr_act());
-    lv_obj_t *first_digit = lv_label_create(lv_scr_act());
-    lv_obj_t *second_digit = lv_label_create(lv_scr_act());
-    lv_obj_t *third_digit = lv_label_create(lv_scr_act());
-    lv_obj_t *fourth_digit = lv_label_create(lv_scr_act());
+void config_labels(void) {
+    num_attempts = lv_label_create(lv_scr_act());
+    first_digit = lv_label_create(lv_scr_act());
+    second_digit = lv_label_create(lv_scr_act());
+    third_digit = lv_label_create(lv_scr_act());
+    fourth_digit = lv_label_create(lv_scr_act());
 
     lv_obj_set_pos(num_attempts, 190, 20);
-    lv_obj_set_pos(first_digit, 15, 145);
-    lv_obj_set_pos(second_digit, 110, 145);
-    lv_obj_set_pos(third_digit, 190, 145);
-    lv_obj_set_pos(fourth_digit, 280, 145);
+    lv_obj_set_pos(first_digit, 55, 160);
+    lv_obj_set_pos(second_digit, 120, 160);
+    lv_obj_set_pos(third_digit, 180, 160);
+    lv_obj_set_pos(fourth_digit, 240, 160);
 
+    lv_obj_set_style_text_font(num_attempts, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(first_digit, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(second_digit, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(third_digit, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_font(fourth_digit, &lv_font_montserrat_20, LV_PART_MAIN);
+}
+
+void disable_labels(void) {
     lv_label_set_text(num_attempts, "");
     lv_label_set_text(first_digit, "");
     lv_label_set_text(second_digit, "");
     lv_label_set_text(third_digit, "");
     lv_label_set_text(fourth_digit, "");
+}
+
+void only_display_fail(void) {
+    lv_obj_clear_flag(warning, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ble_imgage, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(pass, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(attempts_text, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(enter_text, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(dashline, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lock_imgage, LV_OBJ_FLAG_HIDDEN);
+}
+
+void only_display_pass(void) {
+    lv_obj_clear_flag(pass, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(ble_imgage, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(attempts_text, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(enter_text, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(dashline, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lock_imgage, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(warning, LV_OBJ_FLAG_HIDDEN);
+}
+
+void update_interface_thread(void *, void *, void *) {
+
+    config_images();
+    config_labels();
+
+    is_connected = false;
+    k_sem_give(&conn_status_sem);
+
+    char received[MAX_NAME_LEN] = {0};
 
     while (1) {
+        // Clear buffer
+        memset(received, 0, sizeof(received));  
+
         if (!k_msgq_get(&data_msgq, &received, K_NO_WAIT)) {
             printk("Recevied Data: %s\n", received);
             if (strlen(received) == 6 && received[1] == ':') {
-                char attempt[2] = { received[0], '\0' };  // Make it a proper string
-                lv_label_set_text(num_attempts, attempt);
+                lv_label_set_text(num_attempts, (received[0] == '-') ? "" : (char[2]){received[0], '\0'});
                 lv_label_set_text(first_digit, (received[2] == '-') ? "" : (char[2]){received[2], '\0'});
                 lv_label_set_text(second_digit, (received[3] == '-') ? "" : (char[2]){received[3], '\0'});
                 lv_label_set_text(third_digit, (received[4] == '-') ? "" : (char[2]){received[4], '\0'});
                 lv_label_set_text(fourth_digit, (received[5] == '-') ? "" : (char[2]){received[5], '\0'});
             } else if (strlen(received) == 1) {
-                if (!strcmp(received, "N")) {
-                    show_incorrect_passcode_img();
-                } else if (!strcmp(received, "Y")) {
-                    lv_obj_clear_flag(unlock_imgage, LV_OBJ_FLAG_HIDDEN);
-                } else if (!strcmp(received, "F")) {
-                    lv_obj_clear_flag(warning, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(attempts_text, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(ble_imgage, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(dashline, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(dashline, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(enter_text, LV_OBJ_FLAG_HIDDEN);
-                    lv_label_set_text(num_attempts, "");
-                    lv_label_set_text(first_digit, "");
-                    lv_label_set_text(second_digit, "");
-                    lv_label_set_text(third_digit, "");
-                    lv_label_set_text(fourth_digit, "");
+                switch (received[0]) {
+                    case 'N':
+                        show_incorrect_passcode_img();
+                        break;
+                    case 'Y':
+                        only_display_pass();
+                        break;
+                    case 'F':
+                        only_display_fail();
+                        break;
                 }
             }
         }
@@ -284,8 +289,32 @@ void update_interface_thread(void *, void *, void *) {
     }
 }
 
+void ui_setup_connection_thread(void *, void *, void *) {
+
+    while (1) {
+        k_sem_take(&conn_status_sem, K_FOREVER);
+        if (is_connected) {
+            lv_obj_clear_flag(ble_imgage, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(attempts_text, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(enter_text, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(dashline, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            // Hide everything when disconnected
+            lv_obj_add_flag(ble_imgage, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(attempts_text, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(enter_text, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(dashline, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(warning, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(pass, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lock_imgage, LV_OBJ_FLAG_HIDDEN);
+        }
+        disable_labels();
+        k_sleep(K_MSEC(100)); 
+    }
+}
+
 void ble_thread(void *, void *, void *) {
-    int err = set_up_ble();
+    set_up_ble();
     bt_conn_cb_register(&conn_callbacks);
     k_work_init_delayable(&adv_restart_work, adv_restart_fn);
 
@@ -297,4 +326,5 @@ void ble_thread(void *, void *, void *) {
 K_THREAD_DEFINE(ble_tid, 2048, ble_thread, NULL, NULL, NULL, 5, 0, 0); // priority 2 (lower)
 K_THREAD_DEFINE(init_tid, 4096, init_interface_thread, NULL, NULL, NULL, 7, 0, 0);
 K_THREAD_DEFINE(update_tid, 2048, update_interface_thread, NULL, NULL, NULL, 7, 0, 0);
+K_THREAD_DEFINE(ui_setup_tid, 1024, ui_setup_connection_thread, NULL, NULL, NULL, 7, 0, 0);
 
