@@ -710,6 +710,11 @@ void handle_mobile_data(void) {
 
 // MOBILE_DISCONNECT: Disconnect mobile and go idle
 void handle_mobile_disconnect(void) {
+    if (current_event == EVENT_SUCCESS) {
+        servo_toggle();
+        LOG_INF("Unlocking door!");
+    }
+    
     k_msleep(5000);
 
     bluetooth_disconnect();
@@ -754,16 +759,14 @@ void handle_fail(void) {
     transition_to(STATE_BLOCKCHAIN);
 }
 
-// FAIL: Correct passcode within attempt limit
+// SUCCESS: Correct passcode within attempt limit
 void handle_success(void) {
-    LOG_INF("Unlocking door!");
-    servo_toggle();
     last_failed_user = NULL;
     k_msleep(2000);
     transition_to(STATE_BLOCKCHAIN);
 }
 
-// FAIL: Appends the event to the blockchain
+// BLOCKCHAIN: Appends the event to the blockchain
 void handle_blockchain(void) {
     char event_time[16];
     snprintf(event_time, sizeof(event_time), "%lld", current_event_time);
@@ -773,27 +776,27 @@ void handle_blockchain(void) {
         case STATE_TAMPERING:
             add_block(event_time, "TAMPERING", last_mag_meas, last_ultra_meas, "Intruder", "N/A");
             LOG_INF("Tampering event added to blockchain.");
-            k_msleep(5000);
+            k_msleep(2000);
             break;
         case STATE_PRESENCE:
             add_block(event_time, "PRESENCE", last_mag_meas, last_ultra_meas, "Visitor", "N/A");
             LOG_INF("Presence event added to blockchain.");
-            k_msleep(5000);
+            k_msleep(2000);
             break;
         case STATE_MOBILE_DISCONNECTION:
             add_block(event_time, "DISCONNECTION", last_mag_meas, last_ultra_meas, current_user->alias, current_user->mac);
             LOG_INF("User disconnect event added to blockchain.");
-            k_msleep(5000);
+            k_msleep(2000);
             break;
 		case STATE_FAIL:
             add_block(event_time, "FAIL", last_mag_meas, last_ultra_meas, current_user->alias, current_user->mac);
             LOG_INF("Fail event added to blockchain.");
-            k_msleep(5000);
+            k_msleep(2000);
             break;
 		case STATE_SUCCESS:
             add_block(event_time, "SUCCESS", last_mag_meas, last_ultra_meas, current_user->alias, current_user->mac);
             LOG_INF("Success event added to blockchain.");
-            k_msleep(5000);
+            k_msleep(2000);
             LOG_INF("Locking door!");
             servo_toggle();
             break;
@@ -806,5 +809,5 @@ void handle_blockchain(void) {
     transition_to(STATE_IDLE);
 }
 
-// Definte and start the threads.
+// Define and start the threads.
 K_THREAD_DEFINE(fsm_thread_id, STACK_SIZE, fsm_thread, NULL, NULL, NULL, THREAD_PRIORITY, 0, 0);

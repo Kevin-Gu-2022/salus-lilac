@@ -31,7 +31,7 @@ void servo_init(void) {
     LOG_INF("Servomotor initialised.");
 
 	// Initialize to 0°
-    pwm_set_pulse_dt(&servo, max_pulse);
+    pwm_set_pulse_dt(&servo, min_pulse);
     dir = UP;
 }
 
