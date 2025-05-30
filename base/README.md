@@ -1,13 +1,16 @@
 # Base Node
 The base node is the central processing device that:
-- receives sensor event signals over MQTT from an ultrasonic distance sensor and magnetometer
-- attempts to create a BLE connection with any authorised mobile nodes
-- rejects connection attempts from unauthorised mobile nodes
-- classifies event type based on sensor signals and passcode entry attempts
-- receives passcode entry attempts over BLE from the mobile node, and sends a corresponding response to indicate a successful/unsuccessful entry
-- sends signals over MQTT to the Arducam to capture an image during an event
-- logs all events to the immutable blockchain, and sends the event to the PC
-- controls the actuators (servo motor and speaker) to display visual/audio responses to events
+- reads from the file system on start-up to initialise stored user and sensor configurations
+- performs time synchronisation with the sensors node
+- receives sensor data over Bluetooth from an ultrasonic distance sensor and magnetometer
+- processes the sensor data to determine whether an event has occured
+- attempts to connect to any configured authorised mobile nodes
+- processes keypad inputs to track the current passcode state
+- handles reconnecting states for the sensor and mobile nodes
+- classifies the event based on the sensor data and passcode entry attempts
+- logs all events to the immutable blockchain, which is also stored in the file systemm
+- sends the event over RTT to the PC to be displayed on the dashboard
+- controls the servo motor for visual feedback after a successful passcode entry
 
 
 ## *user* Shell Command
@@ -28,4 +31,20 @@ user view <alias>
 ### Viewing configuration details of *all* users 
 ```
 user view -a
+```
+
+## *sensor* Shell Command
+To modify the sensor thresholds, the following shell command was created:
+
+### Setting magnetometer threshold (normalised^2)
+```
+sensor m <threshold>
+```
+### Setting ultrasonic threshold (m)
+```
+sensor u <threshold>
+```
+### Viewing sensor threshold configurations
+```
+sensor view
 ```
