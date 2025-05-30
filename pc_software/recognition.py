@@ -4,6 +4,7 @@ A short script to detect objects using YOLOv8ls
 """
 from ultralytics import YOLO
 import cv2
+import sys
 
 def detect_objects(image_path):
     # Saves a model called yolov8n.pt
@@ -35,4 +36,10 @@ def detect_objects(image_path):
 
 
 if __name__ == "__main__":
-    detect_objects("soccer_ball.jpg")
+    if len(sys.argv) > 1:
+        path = sys.argv[1].lower() # Get the first argument and convert to lowercase
+        detect_objects(path)
+    else:
+        print("No path to image given")
+        sys.exit(-1)
+    

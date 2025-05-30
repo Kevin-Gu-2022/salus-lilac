@@ -1,0 +1,13 @@
+/ {
+    aliases {
+        ultrasonic = &hcsr04_0;
+    };
+
+    hcsr04_0: hc_sr04 {
+        compatible = "hc-sr04";
+        label = "HC_SR04";
+        trigger-gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>;
+        echo-gpios = <&gpiob 2 GPIO_ACTIVE_HIGH>;
+        status = "okay";
+    };
+};

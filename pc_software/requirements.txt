@@ -1,2 +1,4 @@
-ultralytics
+# ultralytics
 python-dotenv
+pyserial
+PyQt5

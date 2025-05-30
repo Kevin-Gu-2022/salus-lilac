@@ -6,6 +6,7 @@
 #include <zephyr/logging/log.h>
 #include <mbedtls/sha256.h>
 #include <zephyr/fs/fs.h>
+#include "SEGGER_RTT.h"
 #include "fs.h"
 #include "blockchain.h"
 
@@ -33,22 +34,56 @@ static void to_sha256_hex(const char *input, char *output) {
     output[64] = '\0';
 }
 
-void add_block(const char *timestamp, const char *event, const char *user, const char *mac) {
+/**
+ * Add a block to the blockchain
+ */
+void add_block(const char *timestamp, const char *event, const char *mag_meas, const char *ultra_meas, const char *user, const char *mac) {
+    struct fs_file_t file;
+    fs_file_t_init(&file);
+
+    // Default for first block
+    char prev_hash[HASH_SIZE] = "GENESIS";
+
+    // Attempt to read the last line from the file
+    if (fs_open(&file, BLOCKCHAIN_FILE, FS_O_READ) >= 0) {
+        char line[512];  // Adjust size as needed
+        char last_line[512] = {0};
+
+        while (fs_read_line(&file, line, sizeof(line)) > 0) {
+            strncpy(last_line, line, sizeof(last_line) - 1);  // Save the most recent
+        }
+
+        fs_close(&file);
+
+        if (strlen(last_line) > 0) {
+            cJSON *last_json = cJSON_Parse(last_line);
+            if (last_json) {
+                cJSON *curr_hash_field = cJSON_GetObjectItem(last_json, "curr_hash");
+                if (cJSON_IsString(curr_hash_field)) {
+                    strncpy(prev_hash, curr_hash_field->valuestring, HASH_SIZE - 1);
+                }
+                cJSON_Delete(last_json);
+            }
+        }
+    }
+    
     if (block_count >= MAX_BLOCKS) return;
 
     Block *new_block = &chain[block_count];
     strncpy(new_block->timestamp, timestamp, sizeof(new_block->timestamp) - 1);
     strncpy(new_block->event, event, sizeof(new_block->event) - 1);
+    strncpy(new_block->mag_meas, mag_meas, sizeof(new_block->mag_meas) - 1);
+    strncpy(new_block->ultra_meas, ultra_meas, sizeof(new_block->ultra_meas) - 1);
     strncpy(new_block->user, user, sizeof(new_block->user) - 1);
     strncpy(new_block->MAC, mac, sizeof(new_block->MAC) - 1);
-
-    const char *prev_hash = (block_count > 0) ? chain[block_count - 1].curr_hash : "GENESIS";
     strncpy(new_block->prev_hash, prev_hash, HASH_SIZE - 1);
 
     // Build JSON without curr_hash
     cJSON *block_json = cJSON_CreateObject();
     cJSON_AddStringToObject(block_json, "timestamp", new_block->timestamp);
     cJSON_AddStringToObject(block_json, "event", new_block->event);
+    cJSON_AddStringToObject(block_json, "mag_meas", new_block->mag_meas);
+    cJSON_AddStringToObject(block_json, "ultra_meas", new_block->ultra_meas);
     cJSON_AddStringToObject(block_json, "user", new_block->user);
     cJSON_AddStringToObject(block_json, "MAC", new_block->MAC);
     cJSON_AddStringToObject(block_json, "prev_hash", new_block->prev_hash);
@@ -61,7 +96,6 @@ void add_block(const char *timestamp, const char *event, const char *user, const
 
     block_count++;
 
-    struct fs_file_t file;
     fs_file_t_init(&file);
     // Append to file
     int ret = fs_open(&file, BLOCKCHAIN_FILE, FS_O_CREATE | FS_O_WRITE | FS_O_APPEND);
@@ -71,6 +105,8 @@ void add_block(const char *timestamp, const char *event, const char *user, const
         cJSON *full_json = cJSON_CreateObject();
         cJSON_AddStringToObject(full_json, "timestamp", new_block->timestamp);
         cJSON_AddStringToObject(full_json, "event", new_block->event);
+        cJSON_AddStringToObject(full_json, "mag_meas", new_block->mag_meas);
+        cJSON_AddStringToObject(full_json, "ultra_meas", new_block->ultra_meas);
         cJSON_AddStringToObject(full_json, "user", new_block->user);
         cJSON_AddStringToObject(full_json, "MAC", new_block->MAC);
         cJSON_AddStringToObject(full_json, "prev_hash", new_block->prev_hash);
@@ -81,6 +117,9 @@ void add_block(const char *timestamp, const char *event, const char *user, const
         if (line) {
             fs_write(&file, line, strlen(line));
             fs_write(&file, "\n", 1);
+
+            SEGGER_RTT_Write(0, line, strlen(line));
+            SEGGER_RTT_Write(0, "\n", 2);
         } else {
             printk("Failed to serialize block to JSON\n");
         }
@@ -116,21 +155,25 @@ bool validate_chain_from_file(void) {
             return false;
         }
 
-        strncpy(curr.timestamp, cJSON_GetObjectItem(json, "timestamp")->valuestring, sizeof(curr.timestamp));
-        strncpy(curr.event,     cJSON_GetObjectItem(json, "event")->valuestring,     sizeof(curr.event));
-        strncpy(curr.user,      cJSON_GetObjectItem(json, "user")->valuestring,      sizeof(curr.user));
-        strncpy(curr.MAC,       cJSON_GetObjectItem(json, "MAC")->valuestring,       sizeof(curr.MAC));
-        strncpy(curr.prev_hash, cJSON_GetObjectItem(json, "prev_hash")->valuestring, HASH_SIZE);
-        strncpy(curr.curr_hash, cJSON_GetObjectItem(json, "curr_hash")->valuestring, HASH_SIZE);
+        strncpy(curr.timestamp,  cJSON_GetObjectItem(json, "timestamp")->valuestring,  sizeof(curr.timestamp));
+        strncpy(curr.event,      cJSON_GetObjectItem(json, "event")->valuestring,      sizeof(curr.event));
+        strncpy(curr.mag_meas,   cJSON_GetObjectItem(json, "mag_meas")->valuestring,   sizeof(curr.mag_meas));
+        strncpy(curr.ultra_meas, cJSON_GetObjectItem(json, "ultra_meas")->valuestring, sizeof(curr.ultra_meas));
+        strncpy(curr.user,       cJSON_GetObjectItem(json, "user")->valuestring,       sizeof(curr.user));
+        strncpy(curr.MAC,        cJSON_GetObjectItem(json, "MAC")->valuestring,        sizeof(curr.MAC));
+        strncpy(curr.prev_hash,  cJSON_GetObjectItem(json, "prev_hash")->valuestring,  HASH_SIZE);
+        strncpy(curr.curr_hash,  cJSON_GetObjectItem(json, "curr_hash")->valuestring,  HASH_SIZE);
 
         if (!first) {
             // Recompute hash from previous block
             cJSON *rebuild = cJSON_CreateObject();
-            cJSON_AddStringToObject(rebuild, "timestamp", prev.timestamp);
-            cJSON_AddStringToObject(rebuild, "event",     prev.event);
-            cJSON_AddStringToObject(rebuild, "user",      prev.user);
-            cJSON_AddStringToObject(rebuild, "MAC",       prev.MAC);
-            cJSON_AddStringToObject(rebuild, "prev_hash", prev.prev_hash);
+            cJSON_AddStringToObject(rebuild, "timestamp",  prev.timestamp);
+            cJSON_AddStringToObject(rebuild, "event",      prev.event);
+            cJSON_AddStringToObject(rebuild, "mag_meas",   prev.mag_meas);
+            cJSON_AddStringToObject(rebuild, "ultra_meas", prev.ultra_meas);
+            cJSON_AddStringToObject(rebuild, "user",       prev.user);
+            cJSON_AddStringToObject(rebuild, "MAC",        prev.MAC);
+            cJSON_AddStringToObject(rebuild, "prev_hash",  prev.prev_hash);
 
             char *serialized = cJSON_PrintUnformatted(rebuild);
             char recomputed[HASH_SIZE];
@@ -197,6 +240,8 @@ void print_chain(void) {
         printf("Block %d:\n", i);
         printf("  timestamp:   %s\n", chain[i].timestamp);
         printf("  event:       %s\n", chain[i].event);
+        printf("  mag_meas:    %s\n", chain[i].mag_meas);
+        printf("  ultra_meas:  %s\n", chain[i].ultra_meas);
         printf("  user:        %s\n", chain[i].user);
         printf("  MAC:         %s\n", chain[i].MAC);
         printf("  prev_hash:   %s\n", chain[i].prev_hash);
