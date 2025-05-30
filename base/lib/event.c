@@ -246,7 +246,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
 
     if (current_state == STATE_SENSOR_DISCONNECT) {
         k_sem_give(&sensor_disconnect_sem);
-    } else if (current_state == STATE_SENSOR_DATA) {
+    } else if (current_state == STATE_SENSOR_DATA || current_state == STATE_SENSOR_SYNC) {
         k_sem_give(&sensor_reconnect_sem);
     } else if (current_state == STATE_MOBILE_DISCONNECT) {
         k_sem_give(&mobile_disconnect_sem);
@@ -484,7 +484,15 @@ void handle_sensor_sync(void) {
 
     if (sync_attempts >= SENSOR_SYNC_ATTEMPTS) {
         LOG_INF("Sensor time sychronised!");
+        sync_attempts = 0;
         transition_to(STATE_SENSOR_DATA);
+        return;
+    }
+
+    // Sensor disconnected, try and reconnect
+    if (k_sem_take(&sensor_reconnect_sem, K_NO_WAIT) == 0) {
+        LOG_INF("Sensors disconnected, attempting reconnect...");
+        transition_to(STATE_SENSOR_CONNECT);
     }
 }
 
